@@ -44,7 +44,7 @@ func matchMaker(client *Client, potentials []*Client) *Client {
 		return
 	}
 
-	for potential := range potentials {
+	for _, potential := range potentials {
 		if potential == nil {
 			continue
 		}
@@ -61,6 +61,7 @@ func matchMaker(client *Client, potentials []*Client) *Client {
 	return nil
 }
 
+
 func clientTracker() {
 
 	clients := make([]*Client, 0)
@@ -74,6 +75,7 @@ func clientTracker() {
 			if c == nil {
 				continue
 			}
+			// Any client here is already available
 			if c.As == "server" {
 				server = c
 				client = matchMaker(clients, server)
@@ -101,14 +103,19 @@ func clientTracker() {
 			} else {
 				client = matchMaker(clients, server)
 				if client != nil {
+					// Client found
 					// Remove client from list
 					clients = RemoveClient(clients, client)
+				} else {
+					server.Available = true
 				}
 			}
 		}
 
 		if client != nil && server != nil {
-			// Go do conversation
+			client.Available = false
+			server.Available = false
+			// Go do communication here
 		}
 	}
 }
