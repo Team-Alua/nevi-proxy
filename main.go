@@ -2,7 +2,6 @@ package main
 
 import (
 
-    "fmt"
     "net/http"
 	"encoding/json"
 
@@ -16,7 +15,7 @@ var upgrader = websocket.Upgrader{
 type Client struct {
 	As string `json:"as"`
 	Filter string `json:"filter"`
-	Conn websocket.Conn
+	Conn *websocket.Conn
 	Available bool
 	Id string
 }
@@ -34,14 +33,14 @@ func RemoveClient(clients []*Client, client *Client) []*Client {
 	}
 	if i >= 0 {
 		ret = make([]*Client, 0)
-		ret = append(ret, clients[:i])
-		ret = append(ret, clients[i+1:])
+		ret = append(ret, clients[:i]...)
+		ret = append(ret, clients[i+1:]...)
 	}
 	return ret
 }
-func matchMaker(client *Client, potentials []*Client) *Client {
+func matchMaker(potentials []*Client, client *Client) *Client {
 	if client == nil {
-		return
+		return nil
 	}
 
 	for _, potential := range potentials {
@@ -62,10 +61,23 @@ func matchMaker(client *Client, potentials []*Client) *Client {
 }
 
 
+func findServerById(servers []*Client, id string) *Client {
+	for _, server := range servers {
+		if server == nil {
+			continue
+		}
+		if server.Id == id {
+			return server
+		}
+	}
+	return nil
+}
+
 func clientTracker() {
 
 	clients := make([]*Client, 0)
 	servers := make([]*Client, 0)
+	endChan := make(chan string)
 	for {
 		var client *Client
 		var server *Client
@@ -92,11 +104,11 @@ func clientTracker() {
 				}
 			}
 		case id := <-endChan:
-			rm = id[0] == '!'
+			rm := id[0] == '!'
 			if rm {
 				id = id[1:]
 			}
-			server := FindServerById(servers, id)
+			server := findServerById(servers, id)
 			if rm || server == nil {
 				servers = RemoveClient(servers, server)
 				server = nil
@@ -123,7 +135,7 @@ func clientTracker() {
 func NeviProxy(w http.ResponseWriter, r *http.Request) {
     conn, _ := upgrader.Upgrade(w, r, nil)
 
-    msgType, msg, err := conn.ReadMessage()
+    _, msg, err := conn.ReadMessage()
     if err != nil {
         return
     }
@@ -135,10 +147,11 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 	c.Conn = conn
 	c.Available = true
 	clientChan <- &c
-})
+}
 
 
 func main() {
     http.HandleFunc("/nevi-proxy", NeviProxy)
     http.ListenAndServe(":8080", nil)
+	return
 }
