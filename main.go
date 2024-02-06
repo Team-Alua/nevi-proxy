@@ -23,6 +23,22 @@ type Client struct {
 
 var clientChan chan *Client
 
+
+func RemoveClient(clients []*Client, client *Client) []*Client {
+	ret := clients
+	i := -1
+	for idx, c := range clients {
+		if client == c {
+			i = idx
+		}
+	}
+	if i >= 0 {
+		ret = make([]*Client, 0)
+		ret = append(ret, clients[:i])
+		ret = append(ret, clients[i+1:])
+	}
+	return ret
+}
 func matchMaker(client *Client, potentials []*Client) *Client {
 	if client == nil {
 		return
@@ -36,6 +52,7 @@ func matchMaker(client *Client, potentials []*Client) *Client {
 		if !potential.Available {
 			continue
 		}
+
 		if potential.Filter == client.Filter {
 			return potential
 		}
@@ -49,34 +66,49 @@ func clientTracker() {
 	clients := make([]*Client, 0)
 	servers := make([]*Client, 0)
 	for {
+		var client *Client
+		var server *Client
+
 		select {
 		case c := <-clientChan:
 			if c == nil {
 				continue
 			}
-			var client *Client
-			var server *Client
 			if c.As == "server" {
-				client = matchMaker(c, clients)
 				server = c
-				servers = append(servers, c)
-			} else {
-				server = matchMaker(c, servers)
+				client = matchMaker(clients, server)
+				if client != nil {
+					// Remove client from list
+					clients = RemoveClient(clients, client)
+				}
+				servers = append(servers, server)
+			} else if c.As == "client" {
 				client = c
+				server = matchMaker(servers, client)
 				if server == nil {
-					clients = append(clients, c)
+					clients = append(clients, client)
 				}
 			}
-			if client != nil && server != nil {
-				// Go do conversation
-			}
 		case id := <-endChan:
-			// client:id
-			// - only removes the client from the list
-			// - check if another client needs to be serviced
-			// - otherwise, marks server as available
-			// all:id
-			// - removes both the server and client from the list
+			rm = id[0] == '!'
+			if rm {
+				id = id[1:]
+			}
+			server := FindServerById(servers, id)
+			if rm || server == nil {
+				servers = RemoveClient(servers, server)
+				server = nil
+			} else {
+				client = matchMaker(clients, server)
+				if client != nil {
+					// Remove client from list
+					clients = RemoveClient(clients, client)
+				}
+			}
+		}
+
+		if client != nil && server != nil {
+			// Go do conversation
 		}
 	}
 }
@@ -94,6 +126,7 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.Conn = conn
+	c.Available = true
 	clientChan <- &c
 })
 
