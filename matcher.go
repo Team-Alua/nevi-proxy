@@ -1,5 +1,10 @@
 package main
 
+import (
+    "github.com/gorilla/websocket"
+)
+
+
 type Matcher struct {
 	servers []*Server
 	clients []*Client
@@ -64,10 +69,19 @@ func (m *Matcher) MatchClients() {
 	for _, c := range m.clients {
 		ms := m.MatchClient(c)
 		if ms == nil {
+			var msg Message
+			msg.Type = websocket.TextMessage
+			msg.Data = []byte("Cound not find a server")
+			c.Writer.Write(&msg)
 			clients = append(clients, c)
 		} else {
+			var msg Message
+			msg.Type = websocket.TextMessage
+			msg.Data = []byte("Found a server")
+			c.Writer.Write(&msg)
+			id := ms.AddClient(c)
+			c.SetId(id)
 			ms.ConnectClient(c)
-			ms.AddClient(c)
 		}
 	}
 

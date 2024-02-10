@@ -15,6 +15,10 @@ func NewSyncReadWriter() *SyncReadWriter {
 }
 
 func (s *SyncReadWriter) Write(msg *Message) {
+	if s == nil {
+		return
+	}
+
 	s.closedMutex.RLock()
 	closed := s.closed	
 	s.closedMutex.RUnlock()
@@ -27,6 +31,9 @@ func (s *SyncReadWriter) Write(msg *Message) {
 }
 
 func (s *SyncReadWriter) Close() {
+	if s == nil {
+		return
+	}
 
 	s.closedMutex.Lock()
 	closed := s.closed
@@ -39,12 +46,32 @@ func (s *SyncReadWriter) Close() {
 
 }
 
+func (s *SyncReadWriter) Closed() bool {
+	if s == nil {
+		return true
+	}
+
+	s.closedMutex.RLock()
+	closed := s.closed	
+	s.closedMutex.RUnlock()
+	return closed
+}
+
 func (s *SyncReadWriter) Read() *Message {
+	if s == nil {
+		return nil
+	}
+
 	s.closedMutex.RLock()
 	closed := s.closed	
 	s.closedMutex.RUnlock()
 	if closed {
 		return nil
 	}
-	return <-s.writer
+	data, ok := <-s.writer
+	if !ok {
+		return nil
+	}
+
+	return data
 }
