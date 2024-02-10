@@ -32,7 +32,7 @@ func clientTracker() {
 type SortRequest struct {
 	As string `json:"as"`
 	Filter string `json:"filter"`
-	Limit uint64 `json:"limit,omitempty"`
+	Limit uint32 `json:"limit,omitempty"`
 }
 
 func NeviProxy(w http.ResponseWriter, r *http.Request) {
