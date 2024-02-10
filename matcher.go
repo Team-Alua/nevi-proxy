@@ -66,6 +66,7 @@ func (m *Matcher) MatchClients() {
 		if ms == nil {
 			clients = append(clients, c)
 		} else {
+			ms.ConnectClient(c)
 			ms.AddClient(c)
 		}
 	}

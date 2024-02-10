@@ -50,17 +50,9 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sr.As == "server" {
-		var serv Server	
-		serv.Conn = conn
-		serv.Filter = sr.Filter
-		serv.Limit = sr.Limit
-		serv.Clients = make([]*Client, 0)
-		serverChan <- &serv
+		serverChan <- NewServer(conn, sr.Filter, sr.Limit)
 	} else if sr.As == "client" {
-		var client Client
-		client.Conn = conn
-		client.Filter = sr.Filter
-		clientChan <- &client
+		clientChan <- NewClient(conn, sr.Filter)
 	} else {
 		conn.Close()
 	}

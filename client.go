@@ -4,18 +4,28 @@ import (
     "github.com/gorilla/websocket"
 )
 
+
+
 type Client struct {
-	Conn *websocket.Conn
-	Id uint32
-	Writer chan *Message
-	ServerWriter chan *Message
 	Filter string
+	ServerWriter *SyncReadWriter
+	Writer *SyncReadWriter
+
+	conn *websocket.Conn
+}
+
+func NewClient(conn *websocket.Conn, filter string) *Client {
+	var c Client
+	c.Writer = NewSyncReadWriter()
+	c.Filter = filter
+	c.conn = conn
+	return &c
 }
 
 // Listen for client messages
 func (c *Client) Listen() {
 	for {
-		msgType, data, err := c.Conn.ReadMessage()
+		msgType, data, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
@@ -24,8 +34,8 @@ func (c *Client) Listen() {
 			var msg Message
 			msg.Type = msgType
 			msg.Data = data
-			// Write to target client
-			c.ServerWriter <- &msg
+			// Write to server
+			c.ServerWriter.Write(&msg)
 		} else {
 			// Ignore for now
 		}
@@ -35,11 +45,11 @@ func (c *Client) Listen() {
 // Repeat all messages sent by the server
 func (c *Client) Repeat() {
 	for {
-		msg, ok := <- c.Writer
-		if !ok {
+		msg := c.Writer.Read()
+		if msg == nil {
 			break
 		}
-		c.Conn.WriteMessage(msg.Type, msg.Data)
+		c.conn.WriteMessage(msg.Type, msg.Data)
 	}
 }
 

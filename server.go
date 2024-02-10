@@ -9,12 +9,23 @@ import (
 )
 
 type Server struct {
-	Conn *websocket.Conn
-	Writer chan *Message
+	Writer *SyncReadWriter
 	Filter string
 	Limit uint32
-	Clients []*Client
+
+	conn *websocket.Conn
 	clientLock sync.RWMutex
+	clients []*Client
+}
+
+func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
+	var s Server
+	s.Writer = NewSyncReadWriter()
+	s.conn = conn
+	s.Filter = filter
+	s.Limit = limit
+	s.clients = make([]*Client, 0)
+	return &s
 }
 
 func (s *Server) DecodeBinaryMessage(data []byte) (id uint32, payload []byte) {
@@ -32,7 +43,7 @@ func (s *Server) DecodeBinaryMessage(data []byte) (id uint32, payload []byte) {
 // Listen for server messages
 func (s *Server) Listen() {
 	for {
-		msgType, data, err := s.Conn.ReadMessage()
+		msgType, data, err := s.conn.ReadMessage()
 		if err != nil {
 			break
 		}
@@ -42,15 +53,15 @@ func (s *Server) Listen() {
 			var client *Client
 			cl := s.clientLock
 			cl.RLock()
-			if clientId < uint32(len(s.Clients)) {
-				client = s.Clients[clientId]	
+			if clientId < uint32(len(s.clients)) {
+				client = s.clients[clientId]	
 			}
 			cl.RUnlock()
 			if client != nil {
 				var msg Message
 				msg.Type = msgType
 				msg.Data = payload
-				client.Writer <- &msg
+				client.Writer.Write(&msg)
 			}
 		} else {
 			// Ignore for now
@@ -61,11 +72,11 @@ func (s *Server) Listen() {
 // Repeat all messages sent by the client
 func (s *Server) Repeat() {
 	for {
-		msg, ok := <-s.Writer
-		if !ok {
+		msg := s.Writer.Read()
+		if msg == nil {
 			break
 		}
-		s.Conn.WriteMessage(msg.Type, msg.Data)
+		s.conn.WriteMessage(msg.Type, msg.Data)
 	}
 }
 
@@ -79,11 +90,11 @@ func (s *Server) CompatibleWith(c *Client) bool {
 		return false
 	}
 
-	if s.Limit < uint32(len(s.Clients)) {
+	if s.Limit < uint32(len(s.clients)) {
 		return false
 	}
 
-	for _, client := range s.Clients {
+	for _, client := range s.clients {
 		if client == nil {
 			return true
 		}
@@ -93,30 +104,37 @@ func (s *Server) CompatibleWith(c *Client) bool {
 }
 
 
-func (s *Server) AddClient(c *Client) (id uint32) {
+func (s *Server) AddClient(c *Client) {
+	var id uint32 = math.MaxUint32
 	cl := s.clientLock
 	cl.Lock()
-	defer cl.Unlock()
-	for idx, client := range s.Clients {
+	for idx, client := range s.clients {
 		if client == nil {
 			id = uint32(idx)
-			s.Clients[idx] = c
-			return
+			break
 		}
 	}
+	if id == math.MaxUint32 {
+		s.clients = append(s.clients, c)
+	} else {
+		s.clients[id] = c
+	}
+	cl.Unlock()
+}
 
-	id = uint32(len(s.Clients))
-	s.Clients = append(s.Clients, c)
-	return
+func (s *Server) ConnectClient(c *Client) {
+	c.ServerWriter = s.Writer
+	go c.Listen()
+	go c.Repeat()
 }
 
 func (s *Server) RemoveClient(c *Client) {
 	cl := s.clientLock
 	cl.Lock()
 	defer cl.Unlock()
-	for idx, client := range s.Clients {
+	for idx, client := range s.clients {
 		if client == c {
-			s.Clients[idx] = nil
+			s.clients[idx] = nil
 			return
 		}
 	}
