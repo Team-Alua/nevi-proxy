@@ -32,7 +32,7 @@ func clientTracker() {
 			c.ServerWriter.Set(nil)
 			go c.Listen()
 			go c.Repeat()
-			match.AddClient(c)
+			match.Clients.Add(c)
 			match.MatchClients()
 		case s := <-serverChan:
 			s.Remover = remover
@@ -40,10 +40,10 @@ func clientTracker() {
 			go s.Listen()
 			go s.Repeat()
 			go s.Ping()
-			match.AddServer(s)
+			match.Servers.Add(s)
 			match.MatchClients()
 		case s := <-remover:
-			match.RemoveServer(s)
+			match.Servers.Remove(s)
 			s.Close()
 		}
 	}

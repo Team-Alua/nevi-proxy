@@ -11,7 +11,6 @@ import (
 	"github.com/Team-Alua/nevi-proxy/isync"
 )
 
-// TODO: Maybe protect id from modification
 type Client struct {
 	Filter string
 	Id *isync.SetGetter[uint32]
@@ -48,15 +47,13 @@ func (c *Client) NotifyDisconnect() {
 		return
 	}
 
-	var msg Message
-	msg.Type = websocket.TextMessage
 	// Data to signify client disconnected
 	var data Status
 	data.Type = "CLIENT_DISCONNECT"
 	data.Id = c.Id.Get()
 	bData, _ := json.Marshal(data)
-	msg.Data = bData
-	c.ServerWriter.Get().Write(&msg)
+	msg := NewTextMessage(bData)
+	c.ServerWriter.Get().Write(msg)
 }
 
 
@@ -75,21 +72,19 @@ func (c *Client) Listen() {
 		}
 
 		if msgType == websocket.BinaryMessage {	
-			var msg Message
-			msg.Type = msgType
-			msg.Data = make([]byte, 4)
+			bData := data
+			data := make([]byte, 4)
 			// Add Client Id
-			binary.BigEndian.PutUint32(msg.Data, c.Id.Get())
-			msg.Data = append(msg.Data, data...)
-			// Write to server
-			c.ServerWriter.Get().Write(&msg)
+			binary.BigEndian.PutUint32(data, c.Id.Get())
+			data = append(data, bData...)
+			msg := NewBinaryMessage(data)
+			c.ServerWriter.Get().Write(msg)
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {
 			// Respond back with a pong
-			var msg Message
-			msg.Type = websocket.PongMessage
-			c.Writer.Get().Write(&msg)
+			msg := NewPongMessage()
+			c.Writer.Get().Write(msg)
 		} else {
 			// Ignore for now
 		}

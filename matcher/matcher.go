@@ -2,51 +2,20 @@ package matcher
 
 import (
 	"github.com/Team-Alua/nevi-proxy/clients"
+	"github.com/Team-Alua/nevi-proxy/isync"
 )
 
 
 type Matcher struct {
-	servers []*clients.Server
-	clients []*clients.Client
+	Servers *isync.List[*clients.Server]
+	Clients *isync.List[*clients.Client]
 }
 
 
 func New() *Matcher {
-	return &Matcher{servers: make([]*clients.Server,0), clients:make([]*clients.Client,0)}
-}
-
-func (m *Matcher) AddClient(c *clients.Client) {
-	m.clients = append(m.clients, c)
-}
-
-func (m *Matcher) AddServer(s *clients.Server) {
-	m.servers = append(m.servers, s)	
-}
-
-func (m *Matcher) RemoveServer(s *clients.Server) {
-	idx := -1
-	for i, server := range m.servers {
-		if server == s {
-			idx = i
-			break
-		}
-	}
-
-	if idx == -1 {
-		return
-	}
-	
-	ret := make([]*clients.Server, len(m.servers) - 1)
-
-	for i, server := range m.servers {
-		if i < idx {
-			ret[i] = server
-		} else if i > idx {
-			ret[i - 1] = server
-		}
-	}
-
-	m.servers = ret
+	servers := isync.NewList[*clients.Server]()
+	clients := isync.NewList[*clients.Client]()
+	return &Matcher{Servers: servers, Clients: clients}
 }
 
 func (m *Matcher) matchClient(c *clients.Client) *clients.Server {
@@ -54,7 +23,7 @@ func (m *Matcher) matchClient(c *clients.Client) *clients.Server {
 		return nil
 	}
 
-	for _, s := range m.servers {
+	for _, s := range m.Servers.Clone() {
 		if s.CompatibleWith(c) {
 			return s
 		}
@@ -66,17 +35,21 @@ func (m *Matcher) matchClient(c *clients.Client) *clients.Server {
 func (m *Matcher) MatchClients() {
 
 	clients := make([]*clients.Client, 0)
-	for _, c := range m.clients {
+	for _, c := range m.Clients.Clone() {
+		if c == nil {
+			continue
+		}
+
 		ms := m.matchClient(c)
 		if ms == nil {
 			clients = append(clients, c)
 		} else {
-			id := ms.AddClient(c)
-			c.Id.Set(id)
+			id := ms.Clients.Add(c)
+			c.Id.Set(uint32(id))
 			ms.ConnectClient(c)
 		}
 	}
 
-	m.clients = clients
+	m.Clients.Set(clients)
 }
 

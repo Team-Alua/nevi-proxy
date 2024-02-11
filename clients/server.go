@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"math"
-	"sync"
 	"time"
 
     "github.com/gorilla/websocket"
@@ -19,8 +18,7 @@ type Server struct {
 	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 
 	conn *websocket.Conn
-	clientLock sync.RWMutex
-	clients []*Client
+	Clients *isync.List[*Client]
 }
 
 func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
@@ -29,7 +27,7 @@ func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
 	s.Limit = limit
 	s.Writer.Set(isync.NewReadWriter[*Message]())
 	s.conn = conn
-	s.clients = make([]*Client, 0)
+	s.Clients = isync.NewList[*Client]()
 	return &s
 }
 
@@ -37,12 +35,11 @@ func (s *Server) Close() {
 	if s == nil {
 		return
 	}
-
-	for i, client := range s.clients {
+	clients := s.Clients.Clone()
+	for _, client := range clients {
 		client.Close()
-		s.clients[i] = nil
 	}
-	s.clients = s.clients[:0]
+	s.Clients.Clear()
 	s.Writer.Get().Close()
 	s.conn.Close()	
 }
@@ -74,18 +71,10 @@ func (s *Server) Listen() {
 
 		if msgType == websocket.BinaryMessage {
 			clientId, payload := s.decodeBinaryMessage(data)
-			var client *Client
-			cl := s.clientLock
-			cl.RLock()
-			if clientId < uint32(len(s.clients)) {
-				client = s.clients[clientId]	
-			}
-			cl.RUnlock()
+			client := s.Clients.Get(uint(clientId))
 			if client != nil {
-				var msg Message
-				msg.Type = msgType
-				msg.Data = payload
-				client.Writer.Get().Write(&msg)
+				msg := NewBinaryMessage(payload)
+				client.Writer.Get().Write(msg)
 			}
 		} else if msgType == websocket.TextMessage { 
 			// Handle disconnects
@@ -94,15 +83,14 @@ func (s *Server) Listen() {
 				// Ignore
 				continue
 			}
-			client := s.RemoveClientById(status.Id)
+			client := s.Clients.RemoveByIndex(uint(status.Id))
 			client.Close()
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {
 			// Respond back with a pong
-			var msg Message
-			msg.Type = websocket.PongMessage
-			s.Writer.Get().Write(&msg)
+			msg := NewPongMessage()
+			s.Writer.Get().Write(msg)
 		} else {
 			// Ignore for now
 		}
@@ -130,7 +118,7 @@ func (s *Server) Repeat() {
 				// Ignore
 				continue
 			}
-			client := s.RemoveClientById(status.Id)
+			client := s.Clients.RemoveByIndex(uint(status.Id))
 			client.Close()
 		} else {
 			s.conn.SetWriteDeadline(time.Now().Add(writeWait))
@@ -154,24 +142,13 @@ func (s *Server) ping() bool {
 	}
 
 	// Ping the server and then ping all the clients
-	var ping Message
+	ping := NewPingMessage()
 
-	ping.Type = websocket.PingMessage
+	writer.Write(ping)
 
-	writer.Write(&ping)
-
-	clients := []*Client{}
-
-	cl := s.clientLock
-	cl.Lock()
-	if len(s.clients) > 0 {
-		clients := make([]*Client, len(s.clients))
-		copy(clients, s.clients)
-	}
-	cl.Unlock()
-
+	clients := s.Clients.Clone()
 	for _, client := range clients {
-		client.Writer.Get().Write(&ping)
+		client.Writer.Get().Write(ping)
 	}
 
 	return true
@@ -202,12 +179,12 @@ func (s *Server) CompatibleWith(c *Client) bool {
 	if s.Filter != c.Filter {
 		return false
 	}
-
-	cc := uint32(len(s.clients))
+	clients := s.Clients.Clone()	
+	cc := uint32(len(clients))
 	if s.Limit < cc  {
 		return false
 	} else if s.Limit == cc {
-		for _, client := range s.clients {
+		for _, client := range clients {
 			if client == nil {
 				return true
 			}
@@ -218,70 +195,10 @@ func (s *Server) CompatibleWith(c *Client) bool {
 	return true
 }
 
-
-func (s *Server) AddClient(c *Client) uint32 {
-	if s == nil {
-		return math.MaxUint32
-	}
-
-	var id uint32 = math.MaxUint32
-	cl := s.clientLock
-	cl.Lock()
-	for idx, client := range s.clients {
-		if client == nil {
-			id = uint32(idx)
-			break
-		}
-	}
-	if id == math.MaxUint32 {
-		id = uint32(len(s.clients))
-		s.clients = append(s.clients, c)
-	} else {
-		s.clients[id] = c
-	}
-	cl.Unlock()
-	return id
-}
-
 func (s *Server) ConnectClient(c *Client) {
 	if s == nil {
 		return
 	}
 	c.ServerWriter.Set(s.Writer.Get())
-}
-
-func (s *Server) RemoveClient(c *Client) {
-	if s == nil {
-		return
-	}
-
-	if c == nil {
-		return
-	}
-
-	cl := s.clientLock
-	cl.Lock()
-	for idx, client := range s.clients {
-		if client == c {
-			s.clients[idx] = nil
-			break
-		}
-	}
-	cl.Unlock()
-}
-
-func (s *Server) RemoveClientById(id uint32) (client *Client) {
-	if s == nil {
-		return
-	}
-
-	cl := s.clientLock
-	cl.Lock()
-	if id < uint32(len(s.clients)) {
-		client = s.clients[id]
-		s.clients[id] = nil
-	}
-	cl.Unlock()
-	return
 }
 
