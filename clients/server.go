@@ -143,6 +143,7 @@ func (s *Server) ping() bool {
 	for idx, client := range clients {
 		if !client.Connected.Get() {
 			// Write client disconnected
+			var status Status
 			status.Type = "CLIENT_DISCONNECTED"
 			status.Id = uint32(idx)
 			writer.Write(NewJsonMessage(status))
