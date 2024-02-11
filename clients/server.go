@@ -23,11 +23,12 @@ type Server struct {
 
 func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
 	var s Server
+	s.Writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
+	s.Clients = isync.NewList[*Client]()
 	s.Filter = filter
 	s.Limit = limit
 	s.Writer.Set(isync.NewReadWriter[*Message]())
 	s.conn = conn
-	s.Clients = isync.NewList[*Client]()
 	return &s
 }
 
@@ -85,6 +86,9 @@ func (s *Server) Listen() {
 			}
 			client := s.Clients.RemoveByIndex(uint(status.Id))
 			client.Close()
+			status.Type = "SUCCESS"
+			status.Id = 0
+			s.Writer.Get().Write(NewJsonMessage(status))
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {
@@ -110,21 +114,10 @@ func (s *Server) Repeat() {
 		if msg == nil {
 			break
 		}
-		
-		if msg.Type == websocket.TextMessage {
-			// Handle disconnects
-			var status Status
-			if err := json.Unmarshal(msg.Data, &status); err != nil {
-				// Ignore
-				continue
-			}
-			client := s.Clients.RemoveByIndex(uint(status.Id))
-			client.Close()
-		} else {
-			s.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := s.conn.WriteMessage(msg.Type, msg.Data); err != nil {
-				break
-			}
+
+		s.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		if err := s.conn.WriteMessage(msg.Type, msg.Data); err != nil {
+			break
 		}
 	}
 	s.Remover <- s
@@ -147,10 +140,16 @@ func (s *Server) ping() bool {
 	writer.Write(ping)
 
 	clients := s.Clients.Clone()
-	for _, client := range clients {
+	for idx, client := range clients {
+		if !client.Connected.Get() {
+			// Write client disconnected
+			status.Type = "CLIENT_DISCONNECTED"
+			status.Id = uint32(idx)
+			writer.Write(NewJsonMessage(status))
+			continue
+		}
 		client.Writer.Get().Write(ping)
 	}
-
 	return true
 }
 
@@ -195,10 +194,19 @@ func (s *Server) CompatibleWith(c *Client) bool {
 	return true
 }
 
-func (s *Server) ConnectClient(c *Client) {
+func (s *Server) ConnectClient(c *Client, id uint32) {
 	if s == nil {
 		return
 	}
+	c.Id.Set(id)
 	c.ServerWriter.Set(s.Writer.Get())
+	var status Status
+	status.Type = "CLIENT_CONNECTED"
+	status.Id = id
+	s.Writer.Get().Write(NewJsonMessage(status))
+
+	status.Type = "CONNECTED"
+	status.Id = id
+	c.Writer.Get().Write(NewJsonMessage(status))
 }
 

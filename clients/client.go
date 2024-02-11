@@ -2,7 +2,6 @@ package clients
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"math"
 	"time"
 
@@ -16,14 +15,20 @@ type Client struct {
 	Id *isync.SetGetter[uint32]
 	ServerWriter *isync.SetGetter[*isync.ReadWriter[*Message]]
 	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
+	Connected *isync.SetGetter[bool]
 
 	conn *websocket.Conn
 }
 
 func NewClient(conn *websocket.Conn, filter string) *Client {
 	var c Client
+	c.Id = isync.NewSetGetter[uint32]()
+	c.ServerWriter = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
+	c.Writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
+	c.Connected = isync.NewSetGetter[bool]()
 	c.Id.Set(math.MaxUint32)
 	c.Writer.Set(isync.NewReadWriter[*Message]())
+	c.Connected.Set(true)
 	c.Filter = filter
 	c.conn = conn
 	return &c
@@ -34,28 +39,13 @@ func (c *Client) Close() {
 		return
 	}
 
-	if c.Id.Get() < math.MaxUint32 {
+	if c.Connected.Exchange(false) {
 		c.Id.Set(math.MaxUint32)
 		c.ServerWriter.Set(nil)
 		c.Writer.Get().Close()
 		c.conn.Close()	
 	}
 }
-
-func (c *Client) NotifyDisconnect() {
-	if c == nil {
-		return
-	}
-
-	// Data to signify client disconnected
-	var data Status
-	data.Type = "CLIENT_DISCONNECT"
-	data.Id = c.Id.Get()
-	bData, _ := json.Marshal(data)
-	msg := NewTextMessage(bData)
-	c.ServerWriter.Get().Write(msg)
-}
-
 
 // Listen for client messages
 func (c *Client) Listen() {
@@ -89,7 +79,7 @@ func (c *Client) Listen() {
 			// Ignore for now
 		}
 	}
-	c.NotifyDisconnect()
+	c.Close()
 }
 
 // Repeat all messages sent by the server
@@ -107,10 +97,9 @@ func (c *Client) Repeat() {
 		}
 		c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 		if err := c.conn.WriteMessage(msg.Type, msg.Data); err != nil {
-			panic(err)
 			break
 		}
 	}
-	c.NotifyDisconnect()
+	c.Close()
 }
 

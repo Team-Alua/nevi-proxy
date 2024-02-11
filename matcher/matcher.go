@@ -40,13 +40,18 @@ func (m *Matcher) MatchClients() {
 			continue
 		}
 
+		// Client disconnected before it was assigned
+		// a server
+		if c.Connected.Get() == false {
+			continue
+		}
+
 		ms := m.matchClient(c)
 		if ms == nil {
 			clients = append(clients, c)
 		} else {
 			id := ms.Clients.Add(c)
-			c.Id.Set(uint32(id))
-			ms.ConnectClient(c)
+			ms.ConnectClient(c, uint32(id))
 		}
 	}
 

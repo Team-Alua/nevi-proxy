@@ -2,6 +2,7 @@ package clients
 
 import (
     "github.com/gorilla/websocket"
+	"encoding/json"
 )
 
 type Message struct {
@@ -35,3 +36,12 @@ func NewPingMessage() *Message {
 	msg.Type = websocket.PingMessage
 	return &msg
 }
+
+func NewJsonMessage(data interface{}) *Message {
+	bData, err := json.Marshal(data)
+	if err != nil {
+		return nil
+	}
+	return NewTextMessage(bData)
+}
+
