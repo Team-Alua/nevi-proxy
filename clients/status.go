@@ -1,4 +1,4 @@
-package main
+package clients
 
 type Status struct {
 	Type string `json:"type"`

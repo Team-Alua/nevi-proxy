@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 
     "github.com/gorilla/websocket"
+
+	"github.com/Team-Alua/nevi-proxy/matcher"
+	"github.com/Team-Alua/nevi-proxy/clients"
 )
 var upgrader = websocket.Upgrader{
     ReadBufferSize:  1024,
@@ -15,29 +18,32 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-var clientChan chan *Client
-var serverChan chan *Server
+var clientChan chan *clients.Client
+var serverChan chan *clients.Server
 
 func clientTracker() {
-	matcher := NewMatcher()
-	remover := make(chan *Server)
+	match := matcher.New()
+	remover := make(chan *clients.Server)
 	for {
 		select {
 		case c := <-clientChan:
 			// Only repeat so we can send notifications
+			// Create a dummy read writer
+			c.ServerWriter.Set(nil)
+			go c.Listen()
 			go c.Repeat()
-			matcher.AddClient(c)
-			matcher.MatchClients()
+			match.AddClient(c)
+			match.MatchClients()
 		case s := <-serverChan:
 			s.Remover = remover
 			// Setup everything so everyone can start talking to each other
 			go s.Listen()
 			go s.Repeat()
 			go s.Ping()
-			matcher.AddServer(s)
-			matcher.MatchClients()
+			match.AddServer(s)
+			match.MatchClients()
 		case s := <-remover:
-			matcher.RemoveServer(s)
+			match.RemoveServer(s)
 			s.Close()
 		}
 	}
@@ -70,9 +76,9 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 	// TODO: Limit the amount of clients a server can handle
 	// TODO: Automatically disconnect if max amount of servers + clients is met
 	if sr.As == "server" && sr.Limit > 0 {
-		serverChan <- NewServer(conn, sr.Filter, sr.Limit)
+		serverChan <- clients.NewServer(conn, sr.Filter, sr.Limit)
 	} else if sr.As == "client" {
-		clientChan <- NewClient(conn, sr.Filter)
+		clientChan <- clients.NewClient(conn, sr.Filter)
 	} else {
 		conn.Close()
 	}
@@ -80,8 +86,8 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 
 
 func main() {
-	serverChan = make(chan *Server)
-	clientChan = make(chan *Client)
+	serverChan = make(chan *clients.Server)
+	clientChan = make(chan *clients.Client)
 	go clientTracker()
     http.HandleFunc("/nevi-proxy", NeviProxy)
     http.ListenAndServe(":8080", nil)

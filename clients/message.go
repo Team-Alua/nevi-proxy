@@ -1,4 +1,4 @@
-package main
+package clients
 
 type Message struct {
 	Type int

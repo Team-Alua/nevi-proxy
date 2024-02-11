@@ -1,4 +1,4 @@
-package main
+package clients
 
 import (
 	"encoding/binary"
@@ -8,13 +8,15 @@ import (
 	"time"
 
     "github.com/gorilla/websocket"
+
+	"github.com/Team-Alua/nevi-proxy/isync"
 )
 
 type Server struct {
 	Filter string
 	Limit uint32
 	Remover chan *Server
-	Writer *SyncReadWriter
+	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 
 	conn *websocket.Conn
 	clientLock sync.RWMutex
@@ -23,10 +25,10 @@ type Server struct {
 
 func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
 	var s Server
-	s.Writer = NewSyncReadWriter()
-	s.conn = conn
 	s.Filter = filter
 	s.Limit = limit
+	s.Writer.Set(isync.NewReadWriter[*Message]())
+	s.conn = conn
 	s.clients = make([]*Client, 0)
 	return &s
 }
@@ -41,7 +43,7 @@ func (s *Server) Close() {
 		s.clients[i] = nil
 	}
 	s.clients = s.clients[:0]
-	s.Writer.Close()
+	s.Writer.Get().Close()
 	s.conn.Close()	
 }
 
@@ -83,7 +85,7 @@ func (s *Server) Listen() {
 				var msg Message
 				msg.Type = msgType
 				msg.Data = payload
-				client.Writer.Write(&msg)
+				client.Writer.Get().Write(&msg)
 			}
 		} else if msgType == websocket.TextMessage { 
 			// Handle disconnects
@@ -100,7 +102,7 @@ func (s *Server) Listen() {
 			// Respond back with a pong
 			var msg Message
 			msg.Type = websocket.PongMessage
-			s.Writer.Write(&msg)
+			s.Writer.Get().Write(&msg)
 		} else {
 			// Ignore for now
 		}
@@ -116,7 +118,7 @@ func (s *Server) Repeat() {
 	writeWait := 10 * time.Second
 
 	for {
-		msg := s.Writer.Read()
+		msg := s.Writer.Get().Read()
 		if msg == nil {
 			break
 		}
@@ -145,7 +147,9 @@ func (s *Server) ping() bool {
 		return false
 	}
 
-	if s.Writer.Closed() {
+	writer := s.Writer.Get()
+
+	if writer.Closed() {
 		return false
 	}
 
@@ -154,7 +158,7 @@ func (s *Server) ping() bool {
 
 	ping.Type = websocket.PingMessage
 
-	s.Writer.Write(&ping)
+	writer.Write(&ping)
 
 	clients := []*Client{}
 
@@ -167,7 +171,7 @@ func (s *Server) ping() bool {
 	cl.Unlock()
 
 	for _, client := range clients {
-		client.Writer.Write(&ping)
+		client.Writer.Get().Write(&ping)
 	}
 
 	return true
@@ -243,17 +247,15 @@ func (s *Server) ConnectClient(c *Client) {
 	if s == nil {
 		return
 	}
-
-	c.ServerWriter = s.Writer
-	go c.Listen()
+	c.ServerWriter.Set(s.Writer.Get())
 }
 
 func (s *Server) RemoveClient(c *Client) {
-	if c == nil {
+	if s == nil {
 		return
 	}
 
-	if s == nil {
+	if c == nil {
 		return
 	}
 

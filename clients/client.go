@@ -1,30 +1,30 @@
-package main
+package clients
 
 import (
 	"encoding/binary"
 	"encoding/json"
 	"math"
-	"sync"
 	"time"
 
     "github.com/gorilla/websocket"
+
+	"github.com/Team-Alua/nevi-proxy/isync"
 )
 
 // TODO: Maybe protect id from modification
 type Client struct {
 	Filter string
-	ServerWriter *SyncReadWriter
-	Writer *SyncReadWriter
+	Id *isync.SetGetter[uint32]
+	ServerWriter *isync.SetGetter[*isync.ReadWriter[*Message]]
+	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 
 	conn *websocket.Conn
-	id uint32
-	idLock sync.RWMutex
 }
 
 func NewClient(conn *websocket.Conn, filter string) *Client {
 	var c Client
-	c.SetId(math.MaxUint32)
-	c.Writer = NewSyncReadWriter()
+	c.Id.Set(math.MaxUint32)
+	c.Writer.Set(isync.NewReadWriter[*Message]())
 	c.Filter = filter
 	c.conn = conn
 	return &c
@@ -35,34 +35,13 @@ func (c *Client) Close() {
 		return
 	}
 
-	if c.GetId() < math.MaxUint32 {
-		c.SetId(math.MaxUint32)
-		c.ServerWriter = nil
-		c.Writer.Close()
+	if c.Id.Get() < math.MaxUint32 {
+		c.Id.Set(math.MaxUint32)
+		c.ServerWriter.Set(nil)
+		c.Writer.Get().Close()
 		c.conn.Close()	
 	}
 }
-
-func (c *Client) SetId(id uint32) {
-	if c == nil {
-		return
-	}
-
-	c.idLock.Lock()
-	c.id = id
-	c.idLock.Unlock()
-}
-
-func (c *Client) GetId() uint32 {
-	if c == nil {
-		return math.MaxUint32
-	}
-
-	c.idLock.RLock()
-	defer c.idLock.RUnlock()
-	return c.id
-}
-
 
 func (c *Client) NotifyDisconnect() {
 	if c == nil {
@@ -74,10 +53,10 @@ func (c *Client) NotifyDisconnect() {
 	// Data to signify client disconnected
 	var data Status
 	data.Type = "CLIENT_DISCONNECT"
-	data.Id = c.GetId()
+	data.Id = c.Id.Get()
 	bData, _ := json.Marshal(data)
 	msg.Data = bData
-	c.ServerWriter.Write(&msg)
+	c.ServerWriter.Get().Write(&msg)
 }
 
 
@@ -100,17 +79,17 @@ func (c *Client) Listen() {
 			msg.Type = msgType
 			msg.Data = make([]byte, 4)
 			// Add Client Id
-			binary.BigEndian.PutUint32(msg.Data, c.GetId())
+			binary.BigEndian.PutUint32(msg.Data, c.Id.Get())
 			msg.Data = append(msg.Data, data...)
 			// Write to server
-			c.ServerWriter.Write(&msg)
+			c.ServerWriter.Get().Write(&msg)
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {
 			// Respond back with a pong
 			var msg Message
 			msg.Type = websocket.PongMessage
-			c.Writer.Write(&msg)
+			c.Writer.Get().Write(&msg)
 		} else {
 			// Ignore for now
 		}
@@ -127,7 +106,7 @@ func (c *Client) Repeat() {
 	writeWait := 10 * time.Second
 
 	for {
-		msg := c.Writer.Read()
+		msg := c.Writer.Get().Read()
 		if msg == nil {
 			break
 		}
