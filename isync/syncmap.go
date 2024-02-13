@@ -53,7 +53,7 @@ func (m *Map[K, V]) Delete(k K) {
 func (m *Map[K, V]) Clear() {
 	l := m.lock
 	l.Lock()
-	m.data = nil
+	clear(m.data)
 	l.Unlock()
 }
 
