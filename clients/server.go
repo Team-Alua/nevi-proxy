@@ -85,10 +85,11 @@ func (s *Server) Listen() {
 				// Ignore
 				continue
 			}
+			// Have it disconnect and then
+			// wait for the next round of pings to 
+			// accept new clients
 			client := s.clients.Get(status.Id)
-			s.clients.Delete(status.Id)
 			client.Close()
-			s.Rematch <- true
 			status.Type = "SUCCESS"
 			status.Id = 0
 			s.Writer.Get().Write(NewJsonMessage(status))
