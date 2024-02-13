@@ -24,9 +24,12 @@ var serverChan chan *clients.Server
 func clientTracker() {
 	match := matcher.New()
 	remover := make(chan *clients.Server)
+	var clientId uint32
 	for {
 		select {
 		case c := <-clientChan:
+			c.Id.Set(clientId)
+			clientId += 1
 			// Only repeat so we can send notifications
 			// Create a dummy read writer
 			c.ServerWriter.Set(nil)

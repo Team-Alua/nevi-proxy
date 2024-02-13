@@ -50,8 +50,7 @@ func (m *Matcher) MatchClients() {
 		if ms == nil {
 			clients = append(clients, c)
 		} else {
-			id := ms.Clients.Add(c)
-			ms.ConnectClient(c, uint32(id))
+			ms.ConnectClient(c)
 		}
 	}
 

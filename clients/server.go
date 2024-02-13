@@ -18,17 +18,17 @@ type Server struct {
 	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 
 	conn *websocket.Conn
-	Clients *isync.List[*Client]
+	clients *isync.Map[uint32, *Client]
 }
 
 func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
 	var s Server
 	s.Writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
-	s.Clients = isync.NewList[*Client]()
 	s.Filter = filter
 	s.Limit = limit
 	s.Writer.Set(isync.NewReadWriter[*Message]())
 	s.conn = conn
+	s.clients = isync.NewMap[uint32, *Client]()
 	return &s
 }
 
@@ -36,11 +36,11 @@ func (s *Server) Close() {
 	if s == nil {
 		return
 	}
-	clients := s.Clients.Clone()
+	clients := s.clients.Clone()
 	for _, client := range clients {
 		client.Close()
 	}
-	s.Clients.Clear()
+	s.clients.Clear()
 	s.Writer.Get().Close()
 	s.conn.Close()	
 }
@@ -72,7 +72,7 @@ func (s *Server) Listen() {
 
 		if msgType == websocket.BinaryMessage {
 			clientId, payload := s.decodeBinaryMessage(data)
-			client := s.Clients.Get(uint(clientId))
+			client := s.clients.Get(clientId)
 			if client != nil {
 				msg := NewBinaryMessage(payload)
 				client.Writer.Get().Write(msg)
@@ -84,7 +84,8 @@ func (s *Server) Listen() {
 				// Ignore
 				continue
 			}
-			client := s.Clients.RemoveByIndex(uint(status.Id))
+			client := s.clients.Get(status.Id)
+			s.clients.Delete(status.Id)
 			client.Close()
 			status.Type = "SUCCESS"
 			status.Id = 0
@@ -139,17 +140,19 @@ func (s *Server) ping() bool {
 
 	writer.Write(ping)
 
-	clients := s.Clients.Clone()
+	clients := s.clients.Clone()
 	for idx, client := range clients {
 		if !client.Connected.Get() {
+			// Remove the client from our array
+			s.clients.Delete(idx)
 			// Write client disconnected
 			var status Status
 			status.Type = "CLIENT_DISCONNECTED"
-			status.Id = uint32(idx)
+			status.Id = idx
 			writer.Write(NewJsonMessage(status))
-			continue
+		} else {
+			client.Writer.Get().Write(ping)
 		}
-		client.Writer.Get().Write(ping)
 	}
 	return true
 }
@@ -179,35 +182,30 @@ func (s *Server) CompatibleWith(c *Client) bool {
 	if s.Filter != c.Filter {
 		return false
 	}
-	clients := s.Clients.Clone()	
-	cc := uint32(len(clients))
-	if s.Limit < cc  {
-		return false
-	} else if s.Limit == cc {
-		for _, client := range clients {
-			if client == nil {
-				return true
-			}
-		}
+	// TODO: Add counter instead of this
+	cc := uint32(s.clients.Count())
+	if s.Limit <= cc  {
 		return false
 	}
 
 	return true
 }
 
-func (s *Server) ConnectClient(c *Client, id uint32) {
+func (s *Server) ConnectClient(c *Client) {
 	if s == nil {
 		return
 	}
-	c.Id.Set(id)
+	cId := c.Id.Get()
 	c.ServerWriter.Set(s.Writer.Get())
+	s.clients.Set(cId, c)
+
 	var status Status
 	status.Type = "CLIENT_CONNECTED"
-	status.Id = id
+	status.Id = cId
 	s.Writer.Get().Write(NewJsonMessage(status))
 
 	status.Type = "CONNECTED"
-	status.Id = id
+	status.Id = cId
 	c.Writer.Get().Write(NewJsonMessage(status))
 }
 
