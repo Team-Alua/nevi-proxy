@@ -14,6 +14,7 @@ import (
 type Server struct {
 	Filter string
 	Limit uint32
+	Rematch chan bool
 	Remover chan *Server
 	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 
@@ -87,6 +88,7 @@ func (s *Server) Listen() {
 			client := s.clients.Get(status.Id)
 			s.clients.Delete(status.Id)
 			client.Close()
+			s.Rematch <- true
 			status.Type = "SUCCESS"
 			status.Id = 0
 			s.Writer.Get().Write(NewJsonMessage(status))
@@ -141,6 +143,7 @@ func (s *Server) ping() bool {
 	writer.Write(ping)
 
 	clients := s.clients.Clone()
+	disconnected := false
 	for idx, client := range clients {
 		if !client.Connected.Get() {
 			// Remove the client from our array
@@ -150,9 +153,13 @@ func (s *Server) ping() bool {
 			status.Type = "CLIENT_DISCONNECTED"
 			status.Id = idx
 			writer.Write(NewJsonMessage(status))
+			disconnected = true
 		} else {
 			client.Writer.Get().Write(ping)
 		}
+	}
+	if disconnected {
+			s.Rematch <- true
 	}
 	return true
 }

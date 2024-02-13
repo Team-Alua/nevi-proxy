@@ -24,9 +24,16 @@ var serverChan chan *clients.Server
 func clientTracker() {
 	match := matcher.New()
 	remover := make(chan *clients.Server)
+	rematchSignal := make(chan bool)
 	var clientId uint32
+
 	for {
 		select {
+		case <-rematchSignal:
+			// Prevent clients from staying in the 
+			// queue forever if no more clients/servers
+			// connect
+			match.MatchClients()
 		case c := <-clientChan:
 			c.Id.Set(clientId)
 			clientId += 1
@@ -39,6 +46,7 @@ func clientTracker() {
 			match.MatchClients()
 		case s := <-serverChan:
 			s.Remover = remover
+			s.Rematch = rematchSignal
 			// Setup everything so everyone can start talking to each other
 			go s.Listen()
 			go s.Repeat()
