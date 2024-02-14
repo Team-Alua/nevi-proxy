@@ -18,6 +18,15 @@ func New() *Matcher {
 	return &Matcher{Servers: servers, clients: clients}
 }
 
+
+func (m *Matcher) pair(s *clients.Server, c *clients.Client) bool {
+	pairable := s.CompatibleWith(c)
+	if pairable {
+		s.ConnectClient(c)
+	}
+	return pairable
+}
+
 func (m *Matcher) MatchClient(c *clients.Client) {
 	if c == nil {
 		return
@@ -28,8 +37,7 @@ func (m *Matcher) MatchClient(c *clients.Client) {
 	}
 
 	for _, s := range m.Servers.Clone() {
-		if s.CompatibleWith(c) {
-			s.ConnectClient(c)
+		if m.pair(s, c) {
 			return
 		}
 	}
@@ -43,8 +51,13 @@ func (m *Matcher) MatchServer(s *clients.Server) {
 	}
 
 	for _, c := range m.clients.Clone() {
-		if s.CompatibleWith(c) {
-			s.ConnectClient(c)
+		// Iterate through clients
+		// until no more can be paired
+		if !s.IsAvailable() {
+			break
+		}
+
+		if !c.Connected.Get() || m.pair(s, c) {
 			m.clients.Remove(c)
 		}
 	}

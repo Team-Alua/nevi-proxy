@@ -145,7 +145,23 @@ func (s *Server) ping() bool {
 	writer.Write(ping)
 
 	clients := s.clients.Clone()
-	disconnected := false
+	for _, client := range clients {
+		if client.Connected.Get() {
+			client.Writer.Get().Write(ping)
+		}
+	}
+
+	return true
+}
+
+func (s *Server) checkOnClients() {
+	writer := s.Writer.Get()
+
+	if writer.Closed() {
+		return
+	}
+
+	clients := s.clients.Clone()
 	for idx, client := range clients {
 		if !client.Connected.Get() {
 			// Remove the client from our array
@@ -155,32 +171,37 @@ func (s *Server) ping() bool {
 			status.Type = "CLIENT_DISCONNECTED"
 			status.Id = idx
 			writer.Write(NewJsonMessage(status))
-			disconnected = true
-		} else {
-			client.Writer.Get().Write(ping)
 		}
 	}
-	if disconnected {
-		s.Rematch <- s
-	}
-	return true
 }
 
 func (s *Server) Ping() {
 	pingPeriod := 15 * time.Second
-	ticker := time.NewTicker(pingPeriod)
+	t1 := time.NewTicker(pingPeriod)
+
+	clientCheckPeriod := 500 * time.Millisecond
+	t2 := time.NewTicker(clientCheckPeriod)
 	defer func() {
-		ticker.Stop()
+		t1.Stop()
+		t2.Stop()
 	}()
+	
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-t1.C:
 			if s.ping() == false {
 				break
 			}
+		case <-t2.C:
+			s.checkOnClients()
 		}
 	}
+}
+
+
+func (s *Server) IsAvailable() bool {
+	return uint32(s.clients.Count()) < s.Limit 
 }
 
 func (s *Server) CompatibleWith(c *Client) bool {
@@ -191,9 +212,8 @@ func (s *Server) CompatibleWith(c *Client) bool {
 	if s.Filter != c.Filter {
 		return false
 	}
-	// TODO: Add counter instead of this
-	cc := uint32(s.clients.Count())
-	if s.Limit <= cc  {
+
+	if !s.IsAvailable() {
 		return false
 	}
 
