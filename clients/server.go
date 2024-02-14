@@ -14,7 +14,7 @@ import (
 type Server struct {
 	Filter string
 	Limit uint32
-	Rematch chan bool
+	Rematch chan *Server
 	Remover chan *Server
 	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 
@@ -90,6 +90,7 @@ func (s *Server) Listen() {
 			// accept new clients
 			client := s.clients.Get(status.Id)
 			client.Close()
+			s.Rematch <- s
 			status.Type = "SUCCESS"
 			status.Id = 0
 			s.Writer.Get().Write(NewJsonMessage(status))
@@ -160,7 +161,7 @@ func (s *Server) ping() bool {
 		}
 	}
 	if disconnected {
-			s.Rematch <- true
+		s.Rematch <- s
 	}
 	return true
 }

@@ -8,52 +8,45 @@ import (
 
 type Matcher struct {
 	Servers *isync.List[*clients.Server]
-	Clients *isync.List[*clients.Client]
+	clients *isync.List[*clients.Client]
 }
 
 
 func New() *Matcher {
 	servers := isync.NewList[*clients.Server]()
 	clients := isync.NewList[*clients.Client]()
-	return &Matcher{Servers: servers, Clients: clients}
+	return &Matcher{Servers: servers, clients: clients}
 }
 
-func (m *Matcher) matchClient(c *clients.Client) *clients.Server {
+func (m *Matcher) MatchClient(c *clients.Client) {
 	if c == nil {
-		return nil
+		return
+	}
+
+	if !c.Connected.Get() {
+		return
 	}
 
 	for _, s := range m.Servers.Clone() {
 		if s.CompatibleWith(c) {
-			return s
+			s.ConnectClient(c)
+			return
 		}
 	}
 
-	return nil
+	m.clients.Add(c)
 }
 
-func (m *Matcher) MatchClients() {
-
-	clients := make([]*clients.Client, 0)
-	for _, c := range m.Clients.Clone() {
-		if c == nil {
-			continue
-		}
-
-		// Client disconnected before it was assigned
-		// a server
-		if c.Connected.Get() == false {
-			continue
-		}
-
-		ms := m.matchClient(c)
-		if ms == nil {
-			clients = append(clients, c)
-		} else {
-			ms.ConnectClient(c)
-		}
+func (m *Matcher) MatchServer(s *clients.Server) {
+	if s == nil {
+		return
 	}
 
-	m.Clients.Set(clients)
+	for _, c := range m.clients.Clone() {
+		if s.CompatibleWith(c) {
+			s.ConnectClient(c)
+			m.clients.Remove(c)
+		}
+	}
 }
 
