@@ -12,7 +12,7 @@ import (
 
 type Client struct {
 	Filter string
-	Id *isync.SetGetter[uint32]
+	Id *isync.SetGetter[uint64]
 	Server *isync.SetGetter[*Server]
 
 	conn *websocket.Conn
@@ -22,11 +22,11 @@ type Client struct {
 
 func NewClient(conn *websocket.Conn, filter string) *Client {
 	var c Client
-	c.Id = isync.NewSetGetter[uint32]()
+	c.Id = isync.NewSetGetter[uint64]()
 	c.Server = isync.NewSetGetter[*Server]()
 	c.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
 	c.connected = isync.NewSetGetter[bool]()
-	c.Id.Set(math.MaxUint32)
+	c.Id.Set(math.MaxUint64)
 	c.writer.Set(isync.NewReadWriter[*Message]())
 	c.connected.Set(true)
 	c.Filter = filter
@@ -80,9 +80,9 @@ func (c *Client) Listen() {
 
 		if msgType == websocket.BinaryMessage {	
 			bData := data
-			data := make([]byte, 4)
+			data := make([]byte, 8)
 			// Add Client Id
-			binary.BigEndian.PutUint32(data, c.Id.Get())
+			binary.BigEndian.PutUint64(data, c.Id.Get())
 			data = append(data, bData...)
 			msg := NewBinaryMessage(data)
 			s := c.Server.Get()

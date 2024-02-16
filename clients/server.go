@@ -18,7 +18,7 @@ type Server struct {
 	Remover chan *Server
 
 	conn *websocket.Conn
-	clients *isync.Map[uint32, *Client]
+	clients *isync.Map[uint64, *Client]
 	writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 }
 
@@ -28,7 +28,7 @@ func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
 	s.Filter = filter
 	s.Limit = limit
 	s.conn = conn
-	s.clients = isync.NewMap[uint32, *Client]()
+	s.clients = isync.NewMap[uint64, *Client]()
 	s.writer.Set(isync.NewReadWriter[*Message]())
 	return &s
 }
@@ -63,15 +63,15 @@ func (s *Server) Close() {
 	s.conn.Close()	
 }
 
-func (s *Server) decodeBinaryMessage(data []byte) (id uint32, payload []byte) {
-	if len(data) < 4 {
-		id = math.MaxUint32
+func (s *Server) decodeBinaryMessage(data []byte) (id uint64, payload []byte) {
+	if len(data) < 8 {
+		id = math.MaxUint64
 		payload = data
 		return
 	}
 
-	id = binary.BigEndian.Uint32(data[0:4])
-	payload = data[4:]
+	id = binary.BigEndian.Uint64(data[0:8])
+	payload = data[8:]
 	return
 }
 

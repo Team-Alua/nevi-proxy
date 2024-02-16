@@ -73,7 +73,7 @@ func clientTracker() {
 	match := matcher.New()
 	remover := make(chan *clients.Server)
 	rematch := make(chan *clients.Server)
-	var clientId uint32
+	var clientId uint64
 
 	for {
 		select {
