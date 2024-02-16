@@ -16,33 +16,49 @@ type Server struct {
 	Limit uint32
 	Rematch chan *Server
 	Remover chan *Server
-	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 
 	conn *websocket.Conn
 	clients *isync.Map[uint32, *Client]
+	writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 }
 
 func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
 	var s Server
-	s.Writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
+	s.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
 	s.Filter = filter
 	s.Limit = limit
-	s.Writer.Set(isync.NewReadWriter[*Message]())
 	s.conn = conn
 	s.clients = isync.NewMap[uint32, *Client]()
+	s.writer.Set(isync.NewReadWriter[*Message]())
 	return &s
 }
+
+func (s *Server) IsConnected() bool {
+	if s == nil {
+		return false
+	}
+	return !s.writer.Get().Closed()
+}
+
+func (s *Server) GetWriter() *isync.ReadWriter[*Message] {
+	if s == nil {
+		return nil
+	}
+	return s.writer.Get()
+}
+
 
 func (s *Server) Close() {
 	if s == nil {
 		return
 	}
+
 	clients := s.clients.Clone()
 	for _, client := range clients {
 		client.Close()
 	}
 	s.clients.Clear()
-	s.Writer.Get().Close()
+	s.writer.Get().Close()
 	s.conn.Close()	
 }
 
@@ -66,6 +82,8 @@ func (s *Server) Listen() {
 	pongWait := 60 * time.Second
 	s.conn.SetPongHandler(func(string) error { s.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
+		// Wait forever
+		s.conn.SetReadDeadline(time.Time{})
 		msgType, data, err := s.conn.ReadMessage()
 		if err != nil {
 			break
@@ -76,7 +94,7 @@ func (s *Server) Listen() {
 			client := s.clients.Get(clientId)
 			if client != nil {
 				msg := NewBinaryMessage(payload)
-				client.Writer.Get().Write(msg)
+				client.GetWriter().Write(msg)
 			}
 		} else if msgType == websocket.TextMessage { 
 			// Handle disconnects
@@ -93,13 +111,13 @@ func (s *Server) Listen() {
 			s.Rematch <- s
 			status.Type = "SUCCESS"
 			status.Id = 0
-			s.Writer.Get().Write(NewJsonMessage(status))
+			s.writer.Get().Write(NewJsonMessage(status))
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {
 			// Respond back with a pong
 			msg := NewPongMessage()
-			s.Writer.Get().Write(msg)
+			s.writer.Get().Write(msg)
 		} else {
 			// Ignore for now
 		}
@@ -115,7 +133,7 @@ func (s *Server) Repeat() {
 	writeWait := 10 * time.Second
 
 	for {
-		msg := s.Writer.Get().Read()
+		msg := s.writer.Get().Read()
 		if msg == nil {
 			break
 		}
@@ -128,42 +146,12 @@ func (s *Server) Repeat() {
 	s.Remover <- s
 }
 
-func (s *Server) ping() bool {
-	if s == nil {
-		return false
-	}
-
-	writer := s.Writer.Get()
-
-	if writer.Closed() {
-		return false
-	}
-
-	// Ping the server and then ping all the clients
-	ping := NewPingMessage()
-
-	writer.Write(ping)
-
-	clients := s.clients.Clone()
-	for _, client := range clients {
-		if client.Connected.Get() {
-			client.Writer.Get().Write(ping)
-		}
-	}
-
-	return true
-}
-
 func (s *Server) checkOnClients() {
-	writer := s.Writer.Get()
-
-	if writer.Closed() {
-		return
-	}
+	writer := s.writer.Get()
 
 	clients := s.clients.Clone()
 	for idx, client := range clients {
-		if !client.Connected.Get() {
+		if !client.IsConnected() {
 			// Remove the client from our array
 			s.clients.Delete(idx)
 			// Write client disconnected
@@ -176,26 +164,20 @@ func (s *Server) checkOnClients() {
 }
 
 func (s *Server) Ping() {
-	pingPeriod := 15 * time.Second
-	t1 := time.NewTicker(pingPeriod)
+	if s == nil {
+		return
+	}
 
 	clientCheckPeriod := 500 * time.Millisecond
 	t2 := time.NewTicker(clientCheckPeriod)
 	defer func() {
-		t1.Stop()
 		t2.Stop()
 	}()
 	
 
-	for {
-		select {
-		case <-t1.C:
-			if s.ping() == false {
-				break
-			}
-		case <-t2.C:
-			s.checkOnClients()
-		}
+	for s.IsConnected() {
+		<-t2.C
+		s.checkOnClients()
 	}
 }
 
@@ -225,16 +207,16 @@ func (s *Server) ConnectClient(c *Client) {
 		return
 	}
 	cId := c.Id.Get()
-	c.ServerWriter.Set(s.Writer.Get())
+	c.ServerWriter.Set(s.writer.Get())
 	s.clients.Set(cId, c)
 
 	var status Status
 	status.Type = "CLIENT_CONNECTED"
 	status.Id = cId
-	s.Writer.Get().Write(NewJsonMessage(status))
+	s.writer.Get().Write(NewJsonMessage(status))
 
 	status.Type = "CONNECTED"
 	status.Id = cId
-	c.Writer.Get().Write(NewJsonMessage(status))
+	c.GetWriter().Write(NewJsonMessage(status))
 }
 

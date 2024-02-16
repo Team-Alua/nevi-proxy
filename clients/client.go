@@ -14,24 +14,39 @@ type Client struct {
 	Filter string
 	Id *isync.SetGetter[uint32]
 	ServerWriter *isync.SetGetter[*isync.ReadWriter[*Message]]
-	Writer *isync.SetGetter[*isync.ReadWriter[*Message]]
-	Connected *isync.SetGetter[bool]
 
 	conn *websocket.Conn
+	connected *isync.SetGetter[bool]
+	writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 }
 
 func NewClient(conn *websocket.Conn, filter string) *Client {
 	var c Client
 	c.Id = isync.NewSetGetter[uint32]()
 	c.ServerWriter = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
-	c.Writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
-	c.Connected = isync.NewSetGetter[bool]()
+	c.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
+	c.connected = isync.NewSetGetter[bool]()
 	c.Id.Set(math.MaxUint32)
-	c.Writer.Set(isync.NewReadWriter[*Message]())
-	c.Connected.Set(true)
+	c.writer.Set(isync.NewReadWriter[*Message]())
+	c.connected.Set(true)
 	c.Filter = filter
 	c.conn = conn
 	return &c
+}
+
+func (c *Client) IsConnected() bool {
+	if c == nil {
+		return false
+	}
+
+	return c.connected.Get()
+}
+
+func (c *Client) GetWriter() *isync.ReadWriter[*Message] {
+	if c == nil {
+		return nil
+	}
+	return c.writer.Get()
 }
 
 func (c *Client) Close() {
@@ -39,10 +54,10 @@ func (c *Client) Close() {
 		return
 	}
 
-	if c.Connected.Exchange(false) {
+	if c.connected.Exchange(false) {
 		c.Id.Set(math.MaxUint32)
 		c.ServerWriter.Set(nil)
-		c.Writer.Get().Close()
+		c.writer.Get().Close()
 		c.conn.Close()	
 	}
 }
@@ -56,6 +71,8 @@ func (c *Client) Listen() {
 	pongWait := 60 * time.Second
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
+		// Reset to wait forever
+		c.conn.SetReadDeadline(time.Time{})
 		msgType, data, err := c.conn.ReadMessage()
 		if err != nil {
 			break
@@ -74,7 +91,7 @@ func (c *Client) Listen() {
 		} else if msgType == websocket.PingMessage {
 			// Respond back with a pong
 			msg := NewPongMessage()
-			c.Writer.Get().Write(msg)
+			c.writer.Get().Write(msg)
 		} else {
 			// Ignore for now
 		}
@@ -91,7 +108,7 @@ func (c *Client) Repeat() {
 	writeWait := 10 * time.Second
 
 	for {
-		msg := c.Writer.Get().Read()
+		msg := c.writer.Get().Read()
 		if msg == nil {
 			break
 		}

@@ -32,7 +32,7 @@ func (m *Matcher) MatchClient(c *clients.Client) {
 		return
 	}
 
-	if !c.Connected.Get() {
+	if !c.IsConnected() {
 		return
 	}
 
@@ -57,7 +57,7 @@ func (m *Matcher) MatchServer(s *clients.Server) {
 			break
 		}
 
-		if !c.Connected.Get() || m.pair(s, c) {
+		if !c.IsConnected() || m.pair(s, c) {
 			m.clients.Remove(c)
 		}
 	}

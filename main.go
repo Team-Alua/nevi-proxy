@@ -10,6 +10,8 @@ import (
 
 	"github.com/Team-Alua/nevi-proxy/matcher"
 	"github.com/Team-Alua/nevi-proxy/clients"
+	"github.com/Team-Alua/nevi-proxy/isync"
+
 )
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -21,6 +23,51 @@ var upgrader = websocket.Upgrader{
 
 var clientChan chan *clients.Client
 var serverChan chan *clients.Server
+var pingChan chan Connectable
+
+type Connectable interface {
+	IsConnected() bool
+	Close() 
+	GetWriter() *isync.ReadWriter[*clients.Message]
+}
+
+
+func pinger() {
+	pingable := make([]Connectable, 0)
+
+	pingPeriod := 1 * time.Second
+	t1 := time.NewTicker(pingPeriod)
+	defer func() {
+		t1.Stop()
+	}()
+
+	for { 
+		select {
+		case c := <-pingChan:
+			pingable = append(pingable, c)
+		case <-t1.C:
+			disconnected := false
+			ping := clients.NewPingMessage()
+			for _, client := range pingable {
+				if client.IsConnected() {
+					disconnected = true
+					continue
+				}
+				client.GetWriter().Write(ping)
+			}
+	
+			if disconnected {
+				temp := make([]Connectable, 0)
+				for _, client := range pingable {
+					if client.IsConnected() {
+						temp = append(temp, client)
+					}
+				}
+				pingable = temp
+			}
+		}
+	}
+}
 
 func clientTracker() {
 	match := matcher.New()
@@ -44,6 +91,7 @@ func clientTracker() {
 			go c.Listen()
 			go c.Repeat()
 			match.MatchClient(c)
+			pingChan <- c
 		case s := <-serverChan:
 			s.Remover = remover
 			s.Rematch = rematch
@@ -53,6 +101,7 @@ func clientTracker() {
 			go s.Ping()
 			match.Servers.Add(s)
 			match.MatchServer(s)
+			pingChan <- s
 		case s := <-remover:
 			match.Servers.Remove(s)
 			s.Close()
@@ -105,7 +154,7 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if cType == CLIENT {
+	if cType == SERVER {
 		serverChan <- clients.NewServer(conn, sr.Filter, sr.Limit)
 	} else {
 		clientChan <- clients.NewClient(conn, sr.Filter)
@@ -117,6 +166,8 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 func main() {
 	serverChan = make(chan *clients.Server)
 	clientChan = make(chan *clients.Client)
+	pingChan = make(chan Connectable)
+	go pinger()
 	go clientTracker()
 	http.HandleFunc("/nevi-proxy", NeviProxy)
 	http.ListenAndServe(":8080", nil)
