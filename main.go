@@ -4,6 +4,7 @@ import (
 
 	"net/http"
 	"encoding/json"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -60,40 +61,56 @@ func clientTracker() {
 }
 
 type SortRequest struct {
-	As string `json:"as"`
 	Filter string `json:"filter"`
 	Limit uint32 `json:"limit,omitempty"`
 }
 
 func NeviProxy(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	// Validate token here
+	if q.Get("token") == "" {
+
+	}
+
     conn, err := upgrader.Upgrade(w, r, nil)
 	
 	if err != nil {
 		panic(err)
 	}
 
+	clientType := q.Get("type")
+	const CLIENT = 0
+	const SERVER = 1
+	const UNK = 2
+	cType := UNK
+	if clientType == "client" {
+		cType = CLIENT
+	} else if clientType == "server" {
+		cType = SERVER
+	}
+
+	if cType == UNK {
+		conn.Close()
+	}
+
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
 		return
 	}
+	conn.SetReadDeadline(time.Time{})
 
 	var sr SortRequest
 	if err := json.Unmarshal(msg, &sr); err != nil {
-		conn.Close()
 		return
 	}
 
-	// TODO: Allow clients and servers
-	// to specify features constraints
-	// TODO: Limit the amount of clients a server can handle
-	// TODO: Automatically disconnect if max amount of servers + clients is met
-	if sr.As == "server" && sr.Limit > 0 {
+	if cType == CLIENT {
 		serverChan <- clients.NewServer(conn, sr.Filter, sr.Limit)
-	} else if sr.As == "client" {
-		clientChan <- clients.NewClient(conn, sr.Filter)
 	} else {
-		conn.Close()
+		clientChan <- clients.NewClient(conn, sr.Filter)
 	}
+
 }
 
 
