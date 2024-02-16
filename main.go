@@ -87,7 +87,7 @@ func clientTracker() {
 			clientId += 1
 			// Only repeat so we can send notifications
 			// Create a dummy read writer
-			c.ServerWriter.Set(nil)
+			c.Server.Set(nil)
 			go c.Listen()
 			go c.Repeat()
 			match.MatchClient(c)

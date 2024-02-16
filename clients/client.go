@@ -13,7 +13,7 @@ import (
 type Client struct {
 	Filter string
 	Id *isync.SetGetter[uint32]
-	ServerWriter *isync.SetGetter[*isync.ReadWriter[*Message]]
+	Server *isync.SetGetter[*Server]
 
 	conn *websocket.Conn
 	connected *isync.SetGetter[bool]
@@ -23,7 +23,7 @@ type Client struct {
 func NewClient(conn *websocket.Conn, filter string) *Client {
 	var c Client
 	c.Id = isync.NewSetGetter[uint32]()
-	c.ServerWriter = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
+	c.Server = isync.NewSetGetter[*Server]()
 	c.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
 	c.connected = isync.NewSetGetter[bool]()
 	c.Id.Set(math.MaxUint32)
@@ -56,7 +56,7 @@ func (c *Client) Close() {
 
 	if c.connected.Exchange(false) {
 		c.Id.Set(math.MaxUint32)
-		c.ServerWriter.Set(nil)
+		c.Server.Set(nil)
 		c.writer.Get().Close()
 		c.conn.Close()	
 	}
@@ -85,7 +85,8 @@ func (c *Client) Listen() {
 			binary.BigEndian.PutUint32(data, c.Id.Get())
 			data = append(data, bData...)
 			msg := NewBinaryMessage(data)
-			c.ServerWriter.Get().Write(msg)
+			s := c.Server.Get()
+			s.GetWriter().Write(msg)
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {

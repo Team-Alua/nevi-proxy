@@ -44,6 +44,7 @@ func (s *Server) GetWriter() *isync.ReadWriter[*Message] {
 	if s == nil {
 		return nil
 	}
+
 	return s.writer.Get()
 }
 
@@ -207,7 +208,7 @@ func (s *Server) ConnectClient(c *Client) {
 		return
 	}
 	cId := c.Id.Get()
-	c.ServerWriter.Set(s.writer.Get())
+	c.Server.Set(s)
 	s.clients.Set(cId, c)
 
 	var status Status
