@@ -149,20 +149,30 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 
 	if cType == SERVER {
 		var r clients.ServerRequest
-		if err := json.Unmarshal(msg, &r); err != nil {
-			conn.Close()
-			return
+		err := json.Unmarshal(msg, &r)
+		sc := false
+		if err != nil {
+			sc = true
+		} else if r.Limit == 0 {
+			sc = true
+		} else if 64 < r.Limit {
+			sc = true
 		}
-		serverChan <- clients.NewServer(conn, &r)
+
+		if sc {
+			conn.Close()
+		} else {
+			serverChan <- clients.NewServer(conn, &r)
+		}
 	} else {
 		var r clients.ClientRequest
-		if err := json.Unmarshal(msg, &r); err != nil {
+		err := json.Unmarshal(msg, &r)
+		if err != nil {
 			conn.Close()
-			return
+		} else {
+			clientChan <- clients.NewClient(conn, &r)
 		}
-		clientChan <- clients.NewClient(conn, &r)
 	}
-
 }
 
 func main() {
