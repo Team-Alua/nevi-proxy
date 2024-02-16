@@ -9,30 +9,45 @@ import (
 
 	"github.com/Team-Alua/nevi-proxy/isync"
 )
+type ClientCapabilityRequest struct {
+	Required []string `json:"required,omitempty"`
+	Optional []string `json:"optional,omitempty"`
+}
+
+type ClientRequest struct {
+	Filter string `json:"filter"`
+	Caps ClientCapabilityRequest `json:"caps"`
+}
 
 type Client struct {
 	Filter string
 	Id *isync.SetGetter[uint64]
 	Server *isync.SetGetter[*Server]
 
+	caps ClientCapabilityRequest
 	conn *websocket.Conn
 	connected *isync.SetGetter[bool]
 	writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 }
 
-func NewClient(conn *websocket.Conn, filter string) *Client {
+func NewClient(conn *websocket.Conn, req *ClientRequest) *Client {
 	var c Client
+
+	c.Filter = req.Filter
 	c.Id = isync.NewSetGetter[uint64]()
-	c.Server = isync.NewSetGetter[*Server]()
-	c.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
-	c.connected = isync.NewSetGetter[bool]()
 	c.Id.Set(math.MaxUint64)
-	c.writer.Set(isync.NewReadWriter[*Message]())
-	c.connected.Set(true)
-	c.Filter = filter
+	c.Server = isync.NewSetGetter[*Server]()
+
+	c.caps = req.Caps
 	c.conn = conn
+	c.connected.Set(true)
+	c.connected = isync.NewSetGetter[bool]()
+	c.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
+	c.writer.Set(isync.NewReadWriter[*Message]())
+
 	return &c
 }
+
 
 func (c *Client) IsConnected() bool {
 	if c == nil {
@@ -61,6 +76,15 @@ func (c *Client) Close() {
 		c.conn.Close()	
 	}
 }
+
+func (c *Client) GetRequiredCaps() []string {
+	return c.caps.Required
+}
+
+func (c *Client) GetOptionalCaps() []string {
+	return c.caps.Optional
+}
+
 
 // Listen for client messages
 func (c *Client) Listen() {

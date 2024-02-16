@@ -109,10 +109,7 @@ func clientTracker() {
 	}
 }
 
-type SortRequest struct {
-	Filter string `json:"filter"`
-	Limit uint32 `json:"limit,omitempty"`
-}
+
 
 func NeviProxy(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -149,19 +146,24 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	conn.SetReadDeadline(time.Time{})
 
-	var sr SortRequest
-	if err := json.Unmarshal(msg, &sr); err != nil {
-		return
-	}
 
 	if cType == SERVER {
-		serverChan <- clients.NewServer(conn, sr.Filter, sr.Limit)
+		var r clients.ServerRequest
+		if err := json.Unmarshal(msg, &r); err != nil {
+			conn.Close()
+			return
+		}
+		serverChan <- clients.NewServer(conn, &r)
 	} else {
-		clientChan <- clients.NewClient(conn, sr.Filter)
+		var r clients.ClientRequest
+		if err := json.Unmarshal(msg, &r); err != nil {
+			conn.Close()
+			return
+		}
+		clientChan <- clients.NewClient(conn, &r)
 	}
 
 }
-
 
 func main() {
 	serverChan = make(chan *clients.Server)

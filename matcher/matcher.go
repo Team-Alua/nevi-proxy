@@ -3,6 +3,7 @@ package matcher
 import (
 	"github.com/Team-Alua/nevi-proxy/clients"
 	"github.com/Team-Alua/nevi-proxy/isync"
+	"github.com/mroth/weightedrand/v2"
 )
 
 
@@ -36,13 +37,37 @@ func (m *Matcher) MatchClient(c *clients.Client) {
 		return
 	}
 
-	for _, s := range m.Servers.Clone() {
-		if m.pair(s, c) {
-			return
+	servers := m.Servers.Clone()
+
+	var server *clients.Server
+
+	// Check for all servers the client
+	// can be serviced by
+	cs := make([]*clients.Server, 0)
+	for _, s := range servers {
+		if s.CompatibleWith(c) {
+			cs = append(cs, s)
 		}
 	}
 
-	m.clients.Add(c)
+	if len(cs) == 0 {
+		m.clients.Add(c)
+		return
+	} 
+
+
+	choices := make([]weightedrand.Choice[*clients.Server, int], 0)
+
+	for _, s := range cs {
+		w := s.CountMatchingCaps(c.GetOptionalCaps()) + 1
+		c := weightedrand.NewChoice(s, w)
+		choices = append(choices, c)
+	}
+
+	chooser, _ := weightedrand.NewChooser(choices...)
+
+	server = chooser.Pick()
+	server.ConnectClient(c)
 }
 
 func (m *Matcher) MatchServer(s *clients.Server) {

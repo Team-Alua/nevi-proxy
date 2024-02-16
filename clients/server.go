@@ -11,25 +11,35 @@ import (
 	"github.com/Team-Alua/nevi-proxy/isync"
 )
 
+type ServerRequest struct {
+	Filter string `json:"filter"`
+	Limit uint32 `json:"limit,omitempty"`
+	Caps []string `json:"caps,omitempty"`
+}
+
 type Server struct {
 	Filter string
 	Limit uint32
 	Rematch chan *Server
 	Remover chan *Server
 
-	conn *websocket.Conn
+	caps []string
 	clients *isync.Map[uint64, *Client]
+	conn *websocket.Conn
 	writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 }
 
-func NewServer(conn *websocket.Conn, filter string, limit uint32) *Server {
+func NewServer(conn *websocket.Conn, req *ServerRequest) *Server {
 	var s Server
-	s.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
-	s.Filter = filter
-	s.Limit = limit
-	s.conn = conn
+	s.Filter = req.Filter
+	s.Limit = req.Limit
+
+	s.caps = req.Caps
 	s.clients = isync.NewMap[uint64, *Client]()
+	s.conn = conn
+	s.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
 	s.writer.Set(isync.NewReadWriter[*Message]())
+
 	return &s
 }
 
@@ -187,8 +197,31 @@ func (s *Server) IsAvailable() bool {
 	return uint32(s.clients.Count()) < s.Limit 
 }
 
+func (s *Server) hasCap(capability string) bool {
+	for _, c := range s.caps {
+		if c == capability {
+			return true
+		}	
+	}
+	return false
+}
+
+
+func (s *Server) CountMatchingCaps(caps []string) (count int) {
+	for _, c := range caps {
+		if s.hasCap(c) {
+			count += 1
+		}
+	}
+	return
+}
+
 func (s *Server) CompatibleWith(c *Client) bool {
 	if s == nil {
+		return false
+	}
+
+	if !s.IsAvailable() {
 		return false
 	}
 
@@ -196,7 +229,8 @@ func (s *Server) CompatibleWith(c *Client) bool {
 		return false
 	}
 
-	if !s.IsAvailable() {
+	rc := c.GetRequiredCaps()
+	if s.CountMatchingCaps(rc) < len(rc) {
 		return false
 	}
 
