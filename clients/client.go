@@ -40,8 +40,8 @@ func NewClient(conn *websocket.Conn, req *ClientRequest) *Client {
 
 	c.caps = req.Caps
 	c.conn = conn
-	c.connected.Set(true)
 	c.connected = isync.NewSetGetter[bool]()
+	c.connected.Set(true)
 	c.writer = isync.NewSetGetter[*isync.ReadWriter[*Message]]()
 	c.writer.Set(isync.NewReadWriter[*Message]())
 
