@@ -19,15 +19,6 @@ func New() *Matcher {
 	return &Matcher{Servers: servers, clients: clients}
 }
 
-
-func (m *Matcher) pair(s *clients.Server, c *clients.Client) bool {
-	pairable := s.CompatibleWith(c)
-	if pairable {
-		s.ConnectClient(c)
-	}
-	return pairable
-}
-
 func (m *Matcher) MatchClient(c *clients.Client) {
 	if c == nil {
 		return
@@ -73,6 +64,14 @@ func (m *Matcher) MatchClient(c *clients.Client) {
 	}
 
 	server.ConnectClient(c)
+}
+
+func (m *Matcher) pair(s *clients.Server, c *clients.Client) bool {
+	pairable := s.CompatibleWith(c)
+	if pairable {
+		s.ConnectClient(c)
+	}
+	return pairable
 }
 
 func (m *Matcher) MatchServer(s *clients.Server) {
