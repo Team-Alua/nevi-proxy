@@ -39,7 +39,6 @@ func (m *Matcher) MatchClient(c *clients.Client) {
 
 	servers := m.Servers.Clone()
 
-	var server *clients.Server
 
 	// Check for all servers the client
 	// can be serviced by
@@ -55,18 +54,24 @@ func (m *Matcher) MatchClient(c *clients.Client) {
 		return
 	} 
 
+	var server *clients.Server
+	
+	if len(cs) == 1 {
+		server = cs[0]
+	} else {
+		choices := make([]weightedrand.Choice[*clients.Server, int], 0)
 
-	choices := make([]weightedrand.Choice[*clients.Server, int], 0)
+		for _, s := range cs {
+			w := s.CountMatchingCaps(c.GetOptionalCaps()) + 1
+			c := weightedrand.NewChoice(s, w)
+			choices = append(choices, c)
+		}
 
-	for _, s := range cs {
-		w := s.CountMatchingCaps(c.GetOptionalCaps()) + 1
-		c := weightedrand.NewChoice(s, w)
-		choices = append(choices, c)
+		chooser, _ := weightedrand.NewChooser(choices...)
+
+		server = chooser.Pick()
 	}
 
-	chooser, _ := weightedrand.NewChooser(choices...)
-
-	server = chooser.Pick()
 	server.ConnectClient(c)
 }
 
