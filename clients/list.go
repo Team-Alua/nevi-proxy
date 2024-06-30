@@ -63,6 +63,7 @@ func (cl *List) RemoveClient(id uint64) {
     l.Unlock()
 }
 
+
 func (cl *List) GetClient(id uint64) (c *Client) {
     if id == 0 {
         return nil
@@ -74,6 +75,24 @@ func (cl *List) GetClient(id uint64) (c *Client) {
         c = cl.clients[idx]
     }
     l.Unlock()
+    return
+}
+
+func (cl *List) GetClientsWithTag(tag uint64) (d []uint64) {
+    d = make([]uint64, 0)
+    // This is the no tag constant
+    if tag == 0 {
+        return
+    }
+
+    l := cl.lock
+    l.RLock()
+    for idx, client := range cl.clients {
+        if client.Tag == tag {
+            d = append(d, cl.ids[idx])
+        }
+    }
+    l.RUnlock()
     return
 }
 

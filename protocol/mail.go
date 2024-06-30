@@ -47,7 +47,9 @@ func (m *Mail) ToBytes() []byte {
     binary.LittleEndian.PutUint64(data, m.source)
     binary.LittleEndian.PutUint64(data[8:], m.target)
     binary.LittleEndian.PutUint32(data[16:], m.code)
-    data = append(data, m.data...)
+    if m.data != nil {
+        data = append(data, m.data...)
+    }
     return data
 }
 
