@@ -12,8 +12,7 @@ import (
 type Client struct {
 	Tag uint64
 	Id uint64
-
-    BinaryHandler chan<-[]byte
+    Mailer chan<-[]byte
     conn *websocket.Conn
 	connected *isync.SetGetter[bool]
 	writer *isync.SetGetter[*isync.ReadWriter[*Message]]
@@ -80,7 +79,7 @@ func (c *Client) Listen() {
 			// Add Client Id
 			binary.BigEndian.PutUint64(data, c.Id)
 			data = append(data, bData...)
-            c.BinaryHandler <- data
+            c.Mailer <- data
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {

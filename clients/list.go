@@ -1,4 +1,4 @@
-package main
+package clients
 
 import (
     "slices"
@@ -6,31 +6,31 @@ import (
     "time"
 
 	"github.com/Team-Alua/nevi-proxy/isync"
-	"github.com/Team-Alua/nevi-proxy/clients"
 )
 
-type ClientList struct {
-    BinaryHandler chan []byte
+type List struct {
+    Mailer chan []byte
 	nextId *isync.Incrementer[uint64]
 	lock sync.RWMutex
-    clients []*clients.Client
+    clients []*Client
     ids []uint64
 }
 
-func NewClientList() *ClientList {
-    cl := &ClientList{}
-    cl.BinaryHandler = make(chan []byte, 10)
+func NewList() *List {
+    cl := &List{}
+    cl.Mailer = make(chan []byte, 10)
     cl.nextId = isync.NewIncrementer[uint64](1)
 
-    cl.clients = make([]*clients.Client, 0)
+    cl.clients = make([]*Client, 0)
     cl.ids = make([]uint64, 0)
     return cl
 }
 
-func (cl *ClientList) AddClient(c *clients.Client) {
+func (cl *List) AddClient(c *Client) {
     id := cl.nextId.Increment()
     c.Id = id
-    c.BinaryHandler = cl.BinaryHandler
+    c.Mailer = cl.Mailer
+
     l := cl.lock
     l.Lock()
     cl.clients = append(cl.clients, c)
@@ -38,7 +38,7 @@ func (cl *ClientList) AddClient(c *clients.Client) {
     l.Unlock()
 }
 
-func (cl *ClientList) RemoveClient(id uint64) {
+func (cl *List) RemoveClient(id uint64) {
     if id == 0 {
         return
     }
@@ -63,7 +63,7 @@ func (cl *ClientList) RemoveClient(id uint64) {
     l.Unlock()
 }
 
-func (cl *ClientList) GetClient(id uint64) (c *clients.Client) {
+func (cl *List) GetClient(id uint64) (c *Client) {
     if id == 0 {
         return nil
     }
@@ -77,7 +77,7 @@ func (cl *ClientList) GetClient(id uint64) (c *clients.Client) {
     return
 }
 
-func (cl *ClientList) PingClients() {
+func (cl *List) PingClients() {
 	pingPeriod := 1 * time.Second
 	t1 := time.NewTicker(pingPeriod)
 	defer func() {
@@ -90,7 +90,7 @@ func (cl *ClientList) PingClients() {
         l.Lock()
 
         disc := make([]uint64, 0)
-		ping := clients.NewPingMessage()
+		ping := NewPingMessage()
 		for idx, client := range cl.clients {
 			if !client.IsConnected() {
 				disc = append(disc, cl.ids[idx])
@@ -100,7 +100,6 @@ func (cl *ClientList) PingClients() {
 		}
 
         l.Unlock()
-
         for _, id := range disc {
             cl.RemoveClient(id)
         }
