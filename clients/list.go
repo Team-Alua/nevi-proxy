@@ -5,13 +5,13 @@ import (
     "sync"
     "time"
 
-	"github.com/Team-Alua/nevi-proxy/isync"
+    "github.com/Team-Alua/nevi-proxy/isync"
 )
 
 type List struct {
     Mailer chan []byte
-	nextId *isync.Incrementer[uint64]
-	lock sync.RWMutex
+    nextId *isync.Incrementer[uint64]
+    lock sync.RWMutex
     clients []*Client
     ids []uint64
 }
@@ -97,31 +97,31 @@ func (cl *List) GetClientsWithTag(tag uint64) (d []uint64) {
 }
 
 func (cl *List) PingClients() {
-	pingPeriod := 1 * time.Second
-	t1 := time.NewTicker(pingPeriod)
-	defer func() {
-		t1.Stop()
-	}()
+    pingPeriod := 1 * time.Second
+    t1 := time.NewTicker(pingPeriod)
+    defer func() {
+        t1.Stop()
+    }()
 
-	for { 
-		<-t1.C
+    for { 
+        <-t1.C
         l := cl.lock
         l.Lock()
 
         disc := make([]uint64, 0)
-		ping := NewPingMessage()
-		for idx, client := range cl.clients {
-			if !client.IsConnected() {
-				disc = append(disc, cl.ids[idx])
-				continue
-			}
-			client.GetWriter().Write(ping)
-		}
+        ping := NewPingMessage()
+        for idx, client := range cl.clients {
+            if !client.IsConnected() {
+                disc = append(disc, cl.ids[idx])
+                continue
+            }
+            client.GetWriter().Write(ping)
+        }
 
         l.Unlock()
         for _, id := range disc {
             cl.RemoveClient(id)
         }
-	}
+    }
 }
 

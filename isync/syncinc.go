@@ -17,11 +17,11 @@ func NewIncrementer[T constraints.Integer](data T) *Incrementer[T] {
 }
 
 func (i *Incrementer[T]) Increment() T {
-	l := i.lock
-	l.Lock()
+    l := i.lock
+    l.Lock()
     data := i.data
     i.data += 1
-	l.Unlock()
+    l.Unlock()
     return data
 }
 

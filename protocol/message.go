@@ -3,7 +3,7 @@ package protocol
 import (
     "encoding/binary"
 
-	"github.com/Team-Alua/nevi-proxy/clients"
+    "github.com/Team-Alua/nevi-proxy/clients"
 )
 
 

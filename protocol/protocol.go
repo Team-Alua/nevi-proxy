@@ -1,7 +1,7 @@
 package protocol
 
 import (
-	"github.com/Team-Alua/nevi-proxy/clients"
+    "github.com/Team-Alua/nevi-proxy/clients"
 )
 
 type Protocol struct {
