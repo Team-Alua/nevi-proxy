@@ -74,12 +74,11 @@ func (c *Client) Listen() {
 		}
 
 		if msgType == websocket.BinaryMessage {	
-			bData := data
-			data := make([]byte, 8)
+            bData := make([]byte, 8)
 			// Add Client Id
-			binary.BigEndian.PutUint64(data, c.Id)
-			data = append(data, bData...)
-            c.Mailer <- data
+            binary.LittleEndian.PutUint64(bData[0:], c.Id)
+			bData = append(bData, data...)
+            c.Mailer <- bData
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {
