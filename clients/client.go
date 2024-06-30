@@ -2,43 +2,26 @@ package clients
 
 import (
 	"encoding/binary"
-	"math"
 	"time"
 
     "github.com/gorilla/websocket"
 
 	"github.com/Team-Alua/nevi-proxy/isync"
 )
-type ClientCapabilityRequest struct {
-	Required []string `json:"required,omitempty"`
-	Optional []string `json:"optional,omitempty"`
-}
-
-type ClientRequest struct {
-	Filter string `json:"filter"`
-	Caps ClientCapabilityRequest `json:"caps"`
-}
 
 type Client struct {
-	Filter string
-	Id *isync.SetGetter[uint64]
-	Server *isync.SetGetter[*Server]
+	Tag uint64
+	Id uint64
 
-	caps ClientCapabilityRequest
-	conn *websocket.Conn
+    BinaryHandler chan<-[]byte
+    conn *websocket.Conn
 	connected *isync.SetGetter[bool]
 	writer *isync.SetGetter[*isync.ReadWriter[*Message]]
 }
 
-func NewClient(conn *websocket.Conn, req *ClientRequest) *Client {
+func NewClient(conn *websocket.Conn) *Client {
 	var c Client
 
-	c.Filter = req.Filter
-	c.Id = isync.NewSetGetter[uint64]()
-	c.Id.Set(math.MaxUint64)
-	c.Server = isync.NewSetGetter[*Server]()
-
-	c.caps = req.Caps
 	c.conn = conn
 	c.connected = isync.NewSetGetter[bool]()
 	c.connected.Set(true)
@@ -70,21 +53,10 @@ func (c *Client) Close() {
 	}
 
 	if c.connected.Exchange(false) {
-		c.Id.Set(math.MaxUint32)
-		c.Server.Set(nil)
 		c.writer.Get().Close()
 		c.conn.Close()	
 	}
 }
-
-func (c *Client) GetRequiredCaps() []string {
-	return c.caps.Required
-}
-
-func (c *Client) GetOptionalCaps() []string {
-	return c.caps.Optional
-}
-
 
 // Listen for client messages
 func (c *Client) Listen() {
@@ -106,11 +78,9 @@ func (c *Client) Listen() {
 			bData := data
 			data := make([]byte, 8)
 			// Add Client Id
-			binary.BigEndian.PutUint64(data, c.Id.Get())
+			binary.BigEndian.PutUint64(data, c.Id)
 			data = append(data, bData...)
-			msg := NewBinaryMessage(data)
-			s := c.Server.Get()
-			s.GetWriter().Write(msg)
+            c.BinaryHandler <- data
 		} else if msgType == websocket.CloseMessage {
 			break
 		} else if msgType == websocket.PingMessage {
