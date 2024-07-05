@@ -10,9 +10,21 @@ import (
 )
 
 type Client struct {
-    Tag uint64
-    Id uint64
+    Id uint64 // Unique identifier 
     Mailer chan<-[]byte
+
+    // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXYZ
+    // X - 62 bit tag value
+    // Y - {1 = listening 0 = not listening} for new clients (friends)
+    // Z - {1 = server 0 = client} 
+    tag uint64 // 62 bits - 0 tag value reserved for no tag
+    friendly bool
+    serving bool
+
+    // All clients that are allowed to send a message when
+    // the client is not friendly
+    friends [32]uint64 
+
     conn *websocket.Conn
     connected *isync.SetGetter[bool]
     writer *isync.SetGetter[*isync.ReadWriter[*Message]]
@@ -30,6 +42,96 @@ func NewClient(conn *websocket.Conn) *Client {
     return &c
 }
 
+func (c *Client) SetState(state uint64) {
+    if c == nil {
+        return
+    }
+    c.tag = (state & ^(uint64(0b11) << 62)) 
+    c.friendly = ((state & 1 << 62) >> 62) == 1
+    c.serving = ((state & 1 << 63) >> 63) == 1
+}
+
+func (c *Client) GetTag() uint64 {
+    if c == nil {
+        return 0
+    }
+    return c.tag
+}
+
+func (c *Client) IsFriendly() bool {
+    if c == nil {
+        return false
+    }
+    return c.friendly
+}
+
+func (c *Client) IsServing() bool {
+    if c == nil {
+        return false
+    }
+    return c.serving
+}
+
+func (c *Client) getFreeFriendIndex() int {
+    if c == nil {
+        return -1
+    }
+
+    for idx, id := range c.friends {
+        if id == 0 {
+            return idx
+        }
+    }
+    return -1
+}
+
+func (c *Client) AddFriend(friendId uint64) bool {
+    if c == nil {
+        return false
+    }
+
+    if !c.FriendsWith(friendId) {
+        idx := c.getFreeFriendIndex()
+        if idx == -1 {
+            return false
+        }
+        c.friends[idx] = friendId
+    }
+    return true
+}
+
+func (c *Client) getFriendIndex(friendId uint64) int {
+    if c == nil {
+        return -1
+    }
+
+    for idx, id := range c.friends {
+        if id == friendId {
+            return idx
+        }
+    }
+    return -1
+}
+
+func (c *Client) RemoveFriend(friendId uint64) bool {
+    if c == nil {
+        return false
+    }
+    idx := c.getFriendIndex(friendId)
+    if idx == -1 {
+        return false
+    }
+    c.friends[idx] = 0
+    return true
+}
+
+
+func (c *Client) FriendsWith(friendId uint64) bool {
+    if c == nil {
+        return false
+    }
+    return c.getFriendIndex(friendId) != -1
+}
 
 func (c *Client) IsConnected() bool {
     if c == nil {
@@ -90,6 +192,11 @@ func (c *Client) Listen() {
         }
     }
     c.Close()
+}
+
+func (c *Client) SendMail(data []byte) {
+    msg := NewBinaryMessage(data)
+    c.writer.Get().Write(msg)
 }
 
 // Repeat all messages sent by the server

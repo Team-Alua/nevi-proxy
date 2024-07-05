@@ -88,7 +88,7 @@ func (cl *List) GetClientsWithTag(tag uint64) (d []uint64) {
     l := cl.lock
     l.RLock()
     for idx, client := range cl.clients {
-        if client.Tag == tag {
+        if client.GetTag() == tag {
             d = append(d, cl.ids[idx])
         }
     }
