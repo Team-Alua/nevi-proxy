@@ -8,7 +8,7 @@ import (
 const (
     SEND_MESSAGE = 1
     UPDATE_STATE = 2
-    GET_CLIENTS_WITH_TAG = 3
+    GET_SERVING_WITH_TAG = 3
 )
 
 func (p *Protocol) notify(id uint64, data []byte) {
@@ -17,12 +17,6 @@ func (p *Protocol) notify(id uint64, data []byte) {
         return
     }
     c.SendMail(data)
-}
-
-func (p *Protocol) notifyAll(ids []uint64, data []byte) {
-    for _, id := range ids {
-        p.notify(id, data)
-    }
 }
 
 func (p *Protocol) HandleMail() {
@@ -87,13 +81,26 @@ func (p *Protocol) HandleMail() {
             }
             r := NewMail(0, m.target, m.code, nil)
             p.notify(s.Id, r.ToBytes())
-        case GET_CLIENTS_WITH_TAG: 
-            ids := clientList.GetClientsWithTag(m.target)
-            payload := make([]byte, len(ids) * 8)
-            for idx, id := range ids {
-                binary.LittleEndian.PutUint64(payload[8 * idx:], id)
+        case GET_SERVING_WITH_TAG: 
+            var payload []byte
+            // Can not be a server
+            if !s.IsServing() {
+                ids := clientList.GetClientsWithTag(m.target)
+                payload = make([]byte, 0)
+                idx := 0
+                for _, id := range ids {
+                    n := clientList.GetClient(id)
+                    // Ignore clients and ignore servers
+                    // who do not want friends
+                    if !n.IsServing() || !n.IsFriendly() {
+                        continue
+                    }
+                    // Add 8 bytes
+                    payload = append(payload, [8]byte{}...)
+                    binary.LittleEndian.PutUint64(payload[8 * idx:], id)
+                    idx += 1
+                }
             }
-
             r := NewMail(0, s.Id, m.code, payload)
             p.notify(s.Id, r.ToBytes())
         }
