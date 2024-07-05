@@ -100,6 +100,10 @@ func (c *Client) getFreeFriendIndex() int {
     return -1
 }
 
+func (c *Client) GetFriends() [32]uint64 {
+    return c.friends
+}
+
 func (c *Client) AddFriend(friendId uint64) bool {
     if c == nil {
         return false

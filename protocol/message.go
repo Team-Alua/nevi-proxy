@@ -3,16 +3,8 @@ package protocol
 import (
     "encoding/binary"
     "github.com/Team-Alua/nevi-proxy/clients"
+    "github.com/Team-Alua/nevi-proxy/constants"
 
-)
-
-
-const (
-    SEND_MESSAGE = 1
-    UPDATE_STATE = 2
-    GET_SERVING_WITH_TAG = 3
-    ADD_FRIEND = 4
-    REMOVE_FRIEND = 5
 )
 
 func (p *Protocol) notifyNone(id uint64, data []byte) {
@@ -36,7 +28,7 @@ func (p *Protocol) HandleMail() {
             continue
         } 
         switch m.GetCode() {
-        case SEND_MESSAGE:
+        case constants.SEND_MESSAGE:
             sId := m.GetSource()
             tId := m.GetTarget()
             t := clientList.GetClient(tId)
@@ -71,7 +63,7 @@ func (p *Protocol) HandleMail() {
                 fm := clients.NewMail(sId, tId, m.GetCode(), m.GetData())
                 admin.Forward(fm)
             }
-        case UPDATE_STATE:
+        case constants.UPDATE_STATE:
             s.SetState(m.GetTarget())
             if s.IsServing() {
                 tag := s.GetTag()
@@ -88,7 +80,7 @@ func (p *Protocol) HandleMail() {
             }
             r := clients.NewMail(0, m.GetTarget(), m.GetCode(), nil)
             admin.SendTo(sId, r)
-        case GET_SERVING_WITH_TAG: 
+        case constants.GET_SERVING_WITH_TAG: 
             var payload []byte
             // Can not be a server
             if !s.IsServing() {
@@ -110,7 +102,7 @@ func (p *Protocol) HandleMail() {
             }
             r := clients.NewMail(0, sId, m.GetCode(), payload)
             admin.SendTo(sId, r)
-        case ADD_FRIEND:
+        case constants.ADD_FRIEND:
             tId := m.GetTarget()
             t := clientList.GetClient(tId)
             if t == nil {
@@ -125,7 +117,7 @@ func (p *Protocol) HandleMail() {
                 r := clients.NewMail(0, sId, m.GetCode(), nil)
                 admin.SendTo(sId, r)
             }
-        case REMOVE_FRIEND:
+        case constants.REMOVE_FRIEND:
             tId := m.GetTarget()
             if s.RemoveFriend(tId) {
                 r := clients.NewMail(0, sId, m.GetCode(), nil)

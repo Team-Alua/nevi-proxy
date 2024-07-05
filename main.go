@@ -32,7 +32,8 @@ func NeviProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-    clientList = clients.NewList()
+    admin := clients.NewAdmin()
+    clientList = clients.NewList(admin)
     go clientList.PingClients()
     proto := protocol.NewProtocol(clientList.Mailer, clientList)
     go proto.HandleMail()
