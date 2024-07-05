@@ -1,4 +1,4 @@
-package protocol
+package clients
 
 import (
     "encoding/binary"
@@ -23,6 +23,7 @@ func NewMail(source uint64, target uint64, code uint32, data []byte) *Mail {
     m.data = data
     return m
 }
+
 
 func NewMailFromBytes(data []byte) *Mail {
     m := &Mail{}
@@ -52,4 +53,21 @@ func (m *Mail) ToBytes() []byte {
     }
     return data
 }
+
+func (m *Mail) GetSource() uint64 {
+    return m.source
+}
+
+func (m *Mail) GetTarget() uint64 {
+    return m.target
+}
+
+func (m *Mail) GetCode() uint32 {
+    return m.code
+}
+
+func (m *Mail) GetData() []byte {
+    return m.data
+}
+
 

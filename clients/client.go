@@ -10,9 +10,10 @@ import (
 )
 
 type Client struct {
-    Id uint64 // Unique identifier 
-    Mailer chan<-[]byte
+    id uint64 // Unique identifier 
+    mailer chan<-[]byte
 
+    // State format
     // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXYZ
     // X - 62 bit tag value
     // Y - {1 = listening 0 = not listening} for new clients (friends)
@@ -40,6 +41,20 @@ func NewClient(conn *websocket.Conn) *Client {
     c.writer.Set(isync.NewReadWriter[*Message]())
 
     return &c
+}
+
+func (c *Client) SetId(id uint64) {
+    if c == nil {
+        return
+    }
+    c.id = id
+}
+
+func (c *Client) SetMailer(mailer chan<-[]byte) {
+    if c == nil {
+        return
+    }
+    c.mailer = mailer
 }
 
 func (c *Client) SetState(state uint64) {
@@ -89,6 +104,11 @@ func (c *Client) AddFriend(friendId uint64) bool {
     if c == nil {
         return false
     }
+    
+    // Can't add yourself as a friend
+    if c.id == friendId {
+        return false
+    }
 
     if !c.FriendsWith(friendId) {
         idx := c.getFreeFriendIndex()
@@ -96,8 +116,9 @@ func (c *Client) AddFriend(friendId uint64) bool {
             return false
         }
         c.friends[idx] = friendId
+        return true
     }
-    return true
+    return false
 }
 
 func (c *Client) getFriendIndex(friendId uint64) int {
@@ -170,6 +191,7 @@ func (c *Client) Listen() {
     for {
         // Reset to wait forever
         c.conn.SetReadDeadline(time.Time{})
+        c.conn.SetReadLimit(1024)
         msgType, data, err := c.conn.ReadMessage()
         if err != nil {
             break
@@ -178,9 +200,9 @@ func (c *Client) Listen() {
         if msgType == websocket.BinaryMessage { 
             bData := make([]byte, 8)
             // Add Client Id
-            binary.LittleEndian.PutUint64(bData[0:], c.Id)
+            binary.LittleEndian.PutUint64(bData[0:], c.id)
             bData = append(bData, data...)
-            c.Mailer <- bData
+            c.mailer <- bData
         } else if msgType == websocket.CloseMessage {
             break
         } else if msgType == websocket.PingMessage {

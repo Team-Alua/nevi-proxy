@@ -12,6 +12,7 @@ type List struct {
     Mailer chan []byte
     nextId *isync.Incrementer[uint64]
     lock sync.RWMutex
+    admin *Admin
     clients []*Client
     ids []uint64
 }
@@ -26,10 +27,17 @@ func NewList() *List {
     return cl
 }
 
+func (cl *List) GetAdmin() *Admin {
+    if cl == nil {
+        return nil
+    }
+    return cl.admin
+}
+
 func (cl *List) AddClient(c *Client) {
     id := cl.nextId.Increment()
-    c.Id = id
-    c.Mailer = cl.Mailer
+    c.SetId(id)
+    c.SetMailer(cl.Mailer)
 
     l := cl.lock
     l.Lock()
@@ -121,7 +129,9 @@ func (cl *List) PingClients() {
         l.Unlock()
         for _, id := range disc {
             cl.RemoveClient(id)
+            cl.admin.HandleDisconnect(id)
         }
     }
 }
+
 

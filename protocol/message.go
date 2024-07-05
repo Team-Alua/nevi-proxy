@@ -2,6 +2,8 @@ package protocol
 
 import (
     "encoding/binary"
+    "github.com/Team-Alua/nevi-proxy/clients"
+
 )
 
 
@@ -9,9 +11,11 @@ const (
     SEND_MESSAGE = 1
     UPDATE_STATE = 2
     GET_SERVING_WITH_TAG = 3
+    ADD_FRIEND = 4
+    REMOVE_FRIEND = 5
 )
 
-func (p *Protocol) notify(id uint64, data []byte) {
+func (p *Protocol) notifyNone(id uint64, data []byte) {
     c := p.clientList.GetClient(id)
     if c == nil {
         return
@@ -21,22 +25,27 @@ func (p *Protocol) notify(id uint64, data []byte) {
 
 func (p *Protocol) HandleMail() {
     clientList := p.clientList
+    admin := clientList.GetAdmin()
     mailer := p.mailer
     for {
         msg := <-mailer
-        m := NewMailFromBytes(msg)
-        s := clientList.GetClient(m.source)
+        m := clients.NewMailFromBytes(msg)
+        sId := m.GetSource()
+        s := clientList.GetClient(sId)
         if s == nil {
             continue
         } 
-        switch m.code {
+        switch m.GetCode() {
         case SEND_MESSAGE:
-            sId := m.source
-            tId := m.target
+            sId := m.GetSource()
+            tId := m.GetTarget()
             t := clientList.GetClient(tId)
             var bounced bool
-            // must be a valid client
+            // must be a valid target client
             if t == nil {
+                bounced = true
+            // The tags must match
+            } else if s.GetTag() != t.GetTag() {
                 bounced = true
             // The target must declare that it is friends
             // with the source to prevent abuse.
@@ -55,37 +64,35 @@ func (p *Protocol) HandleMail() {
 
             if bounced {
                 // Mail bounced
-                fm := NewMail(0, tId, m.code, nil)
-                p.notify(sId, fm.ToBytes())
+                fm := clients.NewMail(0, tId, m.GetCode(), nil)
+                admin.SendTo(sId, fm)
             } else {
                 // Mail forwarded to target
-                fm := NewMail(sId, tId, m.code, m.data)
-                p.notify(tId, fm.ToBytes())
+                fm := clients.NewMail(sId, tId, m.GetCode(), m.GetData())
+                admin.Forward(fm)
             }
         case UPDATE_STATE:
-            s.SetState(m.target)
+            s.SetState(m.GetTarget())
             if s.IsServing() {
                 tag := s.GetTag()
                 ids := clientList.GetClientsWithTag(tag)
-                r := NewMail(0, s.Id, m.code, nil)
-                msg := r.ToBytes()
+                r := clients.NewMail(0, sId, m.GetCode(), nil)
                 for _, id := range ids {
                     n := clientList.GetClient(id)
-                    // Ignore servers and ignore clients
-                    // who do not want friends
-                    if n.IsServing() || !n.IsFriendly() {
+                    // Ignore servers
+                    if n.IsServing() {
                         continue
                     }
-                    p.notify(id, msg)
+                    admin.SendTo(id, r)
                 }
             }
-            r := NewMail(0, m.target, m.code, nil)
-            p.notify(s.Id, r.ToBytes())
+            r := clients.NewMail(0, m.GetTarget(), m.GetCode(), nil)
+            admin.SendTo(sId, r)
         case GET_SERVING_WITH_TAG: 
             var payload []byte
             // Can not be a server
             if !s.IsServing() {
-                ids := clientList.GetClientsWithTag(m.target)
+                ids := clientList.GetClientsWithTag(m.GetTarget())
                 payload = make([]byte, 0)
                 idx := 0
                 for _, id := range ids {
@@ -101,8 +108,29 @@ func (p *Protocol) HandleMail() {
                     idx += 1
                 }
             }
-            r := NewMail(0, s.Id, m.code, payload)
-            p.notify(s.Id, r.ToBytes())
+            r := clients.NewMail(0, sId, m.GetCode(), payload)
+            admin.SendTo(sId, r)
+        case ADD_FRIEND:
+            tId := m.GetTarget()
+            t := clientList.GetClient(tId)
+            if t == nil {
+                // Do not acknowledge invalid ids
+            } else if s.IsServing() == t.IsServing() {
+                // Not compatible
+            } else if s.GetTag() != t.GetTag() {
+                // Tags must match
+            } else if !t.IsFriendly() {
+                // Do not acknowledge the request
+            } else if s.AddFriend(tId) {
+                r := clients.NewMail(0, sId, m.GetCode(), nil)
+                admin.SendTo(sId, r)
+            }
+        case REMOVE_FRIEND:
+            tId := m.GetTarget()
+            if s.RemoveFriend(tId) {
+                r := clients.NewMail(0, sId, m.GetCode(), nil)
+                admin.SendTo(sId, r)
+            }
         }
     }
 }
