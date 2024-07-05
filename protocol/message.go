@@ -74,7 +74,16 @@ func (p *Protocol) HandleMail() {
                 tag := s.GetTag()
                 ids := clientList.GetClientsWithTag(tag)
                 r := NewMail(0, s.Id, m.code, nil)
-                p.notifyAll(ids, r.ToBytes())
+                msg := r.ToBytes()
+                for _, id := range ids {
+                    n := clientList.GetClient(id)
+                    // Ignore servers and ignore clients
+                    // who do not want friends
+                    if n.IsServing() || !n.IsFriendly() {
+                        continue
+                    }
+                    p.notify(id, msg)
+                }
             }
             r := NewMail(0, m.target, m.code, nil)
             p.notify(s.Id, r.ToBytes())
