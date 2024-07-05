@@ -96,7 +96,7 @@ func (p *Protocol) HandleMail() {
                         continue
                     }
                     // Add 8 bytes
-                    payload = append(payload, [8]byte{}...)
+                    payload = append(payload, []byte{0, 0, 0, 0, 0, 0, 0, 0}...)
                     binary.LittleEndian.PutUint64(payload[8 * idx:], id)
                     idx += 1
                 }
