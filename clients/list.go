@@ -17,13 +17,12 @@ type List struct {
     ids []uint64
 }
 
-func NewList(admin *Admin) *List {
+func NewList() *List {
     cl := &List{}
     cl.Mailer = make(chan []byte, 10)
     cl.nextId = isync.NewIncrementer[uint64](1)
 
-    cl.admin = admin
-    admin.list = cl
+    cl.admin = NewAdmin(cl)
     cl.clients = make([]*Client, 0)
     cl.ids = make([]uint64, 0)
     return cl
@@ -130,9 +129,8 @@ func (cl *List) PingClients() {
 
         l.Unlock()
         for _, id := range disc {
-            friendIds := cl.GetClient(id).GetFriends()
+            cl.admin.HandleDisconnect(id)
             cl.RemoveClient(id)
-            cl.admin.HandleDisconnect(id, friendIds)
         }
     }
 }

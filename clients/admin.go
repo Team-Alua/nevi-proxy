@@ -8,8 +8,8 @@ type Admin struct {
     list *List
 }
 
-func NewAdmin() *Admin {
-    return &Admin{}
+func NewAdmin(list *List) *Admin {
+    return &Admin{list}
 }
 
 func (a *Admin) SendTo(id uint64, m *Mail) {
@@ -19,19 +19,18 @@ func (a *Admin) SendTo(id uint64, m *Mail) {
         return
     }
     c.SendMail(m.ToBytes())
-    // It will send whatever mail is to the client with id
 }
 
 func (a *Admin) Forward(m *Mail) {
-    // it will forward the message to m.target
     a.SendTo(m.GetTarget(), m)
 }
 
-func (a *Admin) HandleDisconnect(id uint64, friendIds [32]uint64) {
+func (a *Admin) HandleDisconnect(id uint64) {
     if a == nil {
         return
     }
-    for _, friendId := range friendIds {
+    c := a.list.GetClient(id)
+    for _, friendId := range c.GetFriends() {
         if friendId == 0 {
             continue
         }
